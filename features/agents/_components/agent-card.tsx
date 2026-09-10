@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { format } from "date-fns"
 import { ClockIcon, MoreHorizontalIcon, PauseIcon, PencilIcon, PlayIcon, Trash2Icon, ZapIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -21,6 +22,7 @@ import {
   ItemTitle,
 } from "@/components/ui/item"
 import type { AgentSchedule, CreatAgentType } from "../types"
+import { AgentEditSheet } from "./agent-edit-sheet"
 
 // Reuses the emerald/muted chip colors already used elsewhere in the app
 // (app-sidebar.tsx, create-agent.tsx) — Badge has no built-in "success" variant.
@@ -67,7 +69,7 @@ interface NewAgentCardPropType {
 
 /**
  * @component NewAgentCard
- * @description One row in the "My Agents" list — avatar, name, status badge, description, and next-run schedule, with an edit action and an overflow menu (run now, edit, pause/activate, delete).
+ * @description One row in the "My Agents" list — avatar, name, status badge, description, and next-run schedule, with an edit action and an overflow menu (run now, edit, pause/activate, delete). Keeps its own copy of `agent` so a save in the edit sheet updates the row in place.
  * @param agent The saved agent to display.
  * @param onEdit Called with the agent when the edit button (or the overflow menu's "Edit agent") is clicked.
  * @param onRunNow Called with the agent when "Run now" is chosen from the overflow menu.
@@ -75,29 +77,38 @@ interface NewAgentCardPropType {
  * @param onDelete Called with the agent when "Delete" is chosen from the overflow menu.
  */
 export const NewAgentCard = ({ agent, onEdit, onRunNow, onToggleStatus, onDelete }: NewAgentCardPropType) => {
-  const statusBadge = STATUS_BADGE[agent.status]
-  const nextRun = formatNextRun(agent.schedule)
+  // Local copy so a save in AgentEditSheet reflects here immediately — there's
+  // no shared agents list/query yet to refetch from once "My Agents" exists.
+  const [currentAgent, setCurrentAgent] = useState(agent)
+
+  // Stay in sync if the parent passes a newer `agent` (e.g. after a future list refetch).
+  useEffect(() => {
+    setCurrentAgent(agent)
+  }, [agent])
+
+  const statusBadge = STATUS_BADGE[currentAgent.status]
+  const nextRun = formatNextRun(currentAgent.schedule)
 
   return (
     <Item variant="outline">
       <ItemMedia variant="image" className="bg-muted w-16 h-16" >
-        <img src={agent.agentImage} alt={agent.name} width={50} height={50} />
+        <img src={currentAgent.agentImage} alt={currentAgent.name} width={50} height={50} />
       </ItemMedia>
 
       <ItemContent>
         <ItemTitle>
-          {agent.name}
+          {currentAgent.name}
           <Badge variant="outline" className={statusBadge.className}>
             {statusBadge.label}
           </Badge>
         </ItemTitle>
-        <ItemDescription>{agent.description}</ItemDescription>
+        <ItemDescription>{currentAgent.description}</ItemDescription>
         {nextRun && (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span
               className={cn(
                 "size-1.5 rounded-full",
-                agent.status === "active" ? "bg-emerald-500" : "bg-muted-foreground/40"
+                currentAgent.status === "active" ? "bg-emerald-500" : "bg-muted-foreground/40"
               )}
             />
             <ClockIcon className="size-3.5" />
@@ -107,31 +118,33 @@ export const NewAgentCard = ({ agent, onEdit, onRunNow, onToggleStatus, onDelete
       </ItemContent>
 
       <ItemActions>
-        <Button variant="ghost" size="icon-sm" onClick={() => onEdit?.(agent)}>
-          <PencilIcon />
-          <span className="sr-only">Edit agent</span>
-        </Button>
+        <AgentEditSheet agent={currentAgent} onUpdated={setCurrentAgent}>
+          <Button variant="ghost" size="icon-sm" onClick={() => onEdit?.(currentAgent)}>
+            <PencilIcon />
+            <span className="sr-only">Edit agent</span>
+          </Button>
+        </AgentEditSheet>
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" className="aria-expanded:bg-muted" />}>
             <MoreHorizontalIcon />
             <span className="sr-only">More</span>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onRunNow?.(agent)}>
+            <DropdownMenuItem onClick={() => onRunNow?.(currentAgent)}>
               <ZapIcon />
               <span>Run now</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onEdit?.(agent)}>
+            <DropdownMenuItem onClick={() => onEdit?.(currentAgent)}>
               <PencilIcon />
               <span>Edit agent</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => onToggleStatus?.(agent)}>
-              {agent.status === "active" ? <PauseIcon /> : <PlayIcon />}
-              <span>{agent.status === "active" ? "Pause agent" : "Activate agent"}</span>
+            <DropdownMenuItem onClick={() => onToggleStatus?.(currentAgent)}>
+              {currentAgent.status === "active" ? <PauseIcon /> : <PlayIcon />}
+              <span>{currentAgent.status === "active" ? "Pause agent" : "Activate agent"}</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={() => onDelete?.(agent)}>
+            <DropdownMenuItem variant="destructive" onClick={() => onDelete?.(currentAgent)}>
               <Trash2Icon />
               <span>Delete agent</span>
             </DropdownMenuItem>

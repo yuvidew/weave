@@ -5,6 +5,7 @@ import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import RoolLayoutProvider from '@/components/providers/root-layout-provider';
 import { QueryProvider } from '@/components/providers/query-provider';
+import { Toaster } from '@/components/ui/toast';
 
 const inter = Inter({
   subsets: ["latin"],
@@ -39,7 +40,9 @@ const RootLayout = ({
                 enableSystem
                 disableTransitionOnChange
               >
-                {children}
+                <Toaster>
+                  {children}
+                </Toaster>
               </ThemeProvider>
             </RoolLayoutProvider>
           </QueryProvider>
