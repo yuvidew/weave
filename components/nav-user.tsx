@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useClerk } from "@clerk/nextjs"
 import {
   Avatar,
   AvatarFallback,
@@ -22,9 +23,10 @@ import {
   SidebarMenuSkeleton,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { ChevronsUpDownIcon, SparklesIcon, BadgeCheckIcon, CreditCardIcon, BellIcon, LogOutIcon } from "lucide-react"
+import { ChevronsUpDownIcon, SparklesIcon, BadgeCheckIcon, CreditCardIcon, BellIcon, LogOutIcon, Loader2Icon, SunMoonIcon } from "lucide-react"
 import { useUserDetail } from "@/context/user-detail-context"
 import { AgentUsageDialog } from "@/components/agent-usage-dialog"
+import { ThemeDialog } from "@/components/theme-dialog"
 import { AGENT_LIMIT } from "@/db/schema"
 
 // Extracts up to two initials (first + last name) for the avatar fallback.
@@ -42,8 +44,27 @@ const getInitials = (name?: string | null) => {
 export const NavUser = () => {
   const { isMobile } = useSidebar()
   const { userDetail } = useUserDetail()
+  const { signOut } = useClerk()
   // Controls the open state of the agent-usage dialog, opened from the dropdown.
   const [usageOpen, setUsageOpen] = useState(false)
+  // Controls the open state of the theme dialog, opened from the dropdown.
+  const [themeOpen, setThemeOpen] = useState(false)
+  // Dropdown is controlled so we can force it closed once sign-out settles.
+  const [menuOpen, setMenuOpen] = useState(false)
+  // True while the sign-out request is in flight — swaps the log-out icon for a spinner.
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
+
+  // Signs the user out and redirects to /sign-in. Keeps the dropdown open
+  // (via closeOnClick={false} on the item) until the request settles.
+  const handleLogout = async () => {
+    setIsLoggingOut(true)
+    try {
+      await signOut({ redirectUrl: "/sign-in" })
+    } finally {
+      setIsLoggingOut(false)
+      setMenuOpen(false)
+    }
+  }
 
   if (!userDetail) {
     return (
@@ -66,7 +87,7 @@ export const NavUser = () => {
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <DropdownMenu>
+        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger
             render={
               <SidebarMenuButton size="lg" className="aria-expanded:bg-muted" />
@@ -122,6 +143,11 @@ export const NavUser = () => {
                 />
                 Usage
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setThemeOpen(true)}>
+                <SunMoonIcon
+                />
+                Theme
+              </DropdownMenuItem>
               <DropdownMenuItem>
                 <BellIcon
                 />
@@ -129,9 +155,16 @@ export const NavUser = () => {
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <LogOutIcon
-              />
+            <DropdownMenuItem
+              closeOnClick={false}
+              disabled={isLoggingOut}
+              onClick={handleLogout}
+            >
+              {isLoggingOut ? (
+                <Loader2Icon className="animate-spin" />
+              ) : (
+                <LogOutIcon />
+              )}
               Log out
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -142,6 +175,7 @@ export const NavUser = () => {
         onOpenChange={setUsageOpen}
         used={agentsUsed}
       />
+      <ThemeDialog open={themeOpen} onOpenChange={setThemeOpen} />
     </SidebarMenu>
   )
 }
