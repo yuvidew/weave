@@ -12,14 +12,18 @@ import { Card } from "@/components/ui/card"
 import {
   ArrowUpIcon,
   BriefcaseIcon,
+  Loader2Icon,
   MailIcon,
   PlusIcon,
   SearchIcon,
 } from "lucide-react"
+import { useAgentConfigure } from "@/features/agents/hook/use-agent-configure"
+import { isAxiosError } from "axios"
+import { AiAgentQues } from "./ai-agent-ques"
+import { NewAgentCard } from "./agent-card"
 
 // Quick-start suggestions shown as chips under the composer. Clicking one
-// fills the textarea with its example prompt instead of calling any API —
-// there's no create-agent backend yet.
+// just fills the textarea with its example prompt — it doesn't submit.
 const SUGGESTIONS = [
   { label: "Find AI Jobs", prompt: "Search the web for the latest AI jobs matching my profile." },
   { label: "Inbox Summary", prompt: "Summarize important emails and highlight what needs my attention." },
@@ -58,12 +62,27 @@ const GET_STARTED = [
 export const CreateAgent = ({ onViewAll }: { onViewAll?: () => void }) => {
   const [prompt, setPrompt] = useState("")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const { mutate: configureAgent, data: configResult, isPending, error } = useAgentConfigure()
 
   // Fills the composer with a suggestion's prompt and focuses it.
   const fillPrompt = (value: string) => {
     setPrompt(value)
     textareaRef.current?.focus()
   }
+
+  // Kicks off agent-config generation for the current prompt.
+  const onSubmit = () => {
+    if (!prompt.trim() || isPending) return
+    configureAgent(prompt)
+  }
+
+  // Re-runs generation with the clarification answers appended to the
+  // original prompt, so the model has everything it asked for.
+  const onQuestionsComplete = (answers: Record<string, string | string[]>) => {
+    configureAgent(`${prompt}\n${JSON.stringify(answers)}`)
+  };
+
+
 
   return (
     <div className="flex flex-col gap-6 mt-5">
@@ -87,55 +106,80 @@ export const CreateAgent = ({ onViewAll }: { onViewAll?: () => void }) => {
             <PlusIcon />
             <span className="sr-only">Add attachment</span>
           </InputGroupButton>
-          {/* No create-agent API exists yet — this is a placeholder until one does. */}
           <InputGroupButton
             size="icon-sm"
-            disabled={!prompt.trim()}
+            disabled={!prompt.trim() || isPending}
+            onClick={onSubmit}
             className="rounded-full bg-violet-600 text-white hover:bg-violet-600/90 dark:bg-violet-500 dark:hover:bg-violet-500/90"
           >
-            <ArrowUpIcon />
+            {isPending ? <Loader2Icon className="animate-spin" /> : <ArrowUpIcon />}
             <span className="sr-only">Create agent</span>
           </InputGroupButton>
         </InputGroupAddon>
       </InputGroup>
 
-      <div className="flex flex-wrap gap-2">
-        {SUGGESTIONS.map((suggestion) => (
-          <Button
-            key={suggestion.label}
-            variant="outline"
-            size="sm"
-            className="rounded-full"
-            onClick={() => fillPrompt(suggestion.prompt)}
-          >
-            {suggestion.label}
-          </Button>
-        ))}
-      </div>
+      {error && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+          {/* Prefer the server's message (e.g. "model temporarily overloaded")
+              over a generic one so a retryable failure reads as retryable. */}
+          {isAxiosError<{ error?: string }>(error) && error.response?.data?.error
+            ? error.response.data.error
+            : "Something went wrong generating the agent config. Please try again."}
+        </div>
+      )}
+      {configResult?.status === "needs_clarification" && (
+        <AiAgentQues questionList={configResult.clarificationQuestions} onComplete={onQuestionsComplete} />
+      )}
 
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h2 className="font-heading text-lg font-semibold">Get Started</h2>
-          <Button variant="link" size="sm" className="h-auto p-0" onClick={onViewAll}>
-            View All
-          </Button>
+      {configResult?.status === "ready" && configResult.agent && (
+        <NewAgentCard agent={configResult.agent} />
+      )}
+      {isPending ? (
+        <div className="flex items-center gap-2 rounded-xl border p-4 text-sm text-muted-foreground">
+          <Loader2Icon className="size-4 animate-spin" />
+          Generating agent config…
         </div>
-        <div className="grid gap-4 sm:grid-cols-3">
-          {GET_STARTED.map(({ title, description, icon: Icon, iconColor }) => (
-            <Card
-              key={title}
-              className="cursor-pointer gap-3 p-5 text-left transition-colors hover:bg-muted/40"
-              onClick={() => fillPrompt(description)}
-            >
-              <div className={`flex size-10 items-center justify-center rounded-xl ${iconColor}`}>
-                <Icon className="size-5" />
-              </div>
-              <div className="font-medium">{title}</div>
-              <p className="text-sm text-muted-foreground">{description}</p>
-            </Card>
-          ))}
-        </div>
-      </div>
+      ) : configResult ? null : (
+        <>
+          <div className="flex flex-wrap gap-2">
+            {SUGGESTIONS.map((suggestion) => (
+              <Button
+                key={suggestion.label}
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                onClick={() => fillPrompt(suggestion.prompt)}
+              >
+                {suggestion.label}
+              </Button>
+            ))}
+          </div>
+
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-heading text-lg font-semibold">Get Started</h2>
+              <Button variant="link" size="sm" className="h-auto p-0" onClick={onViewAll}>
+                View All
+              </Button>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {GET_STARTED.map(({ title, description, icon: Icon, iconColor }) => (
+                <Card
+                  key={title}
+                  className="cursor-pointer gap-3 p-5 text-left transition-colors hover:bg-muted/40"
+                  onClick={() => fillPrompt(description)}
+                >
+                  <div className={`flex size-10 items-center justify-center rounded-xl ${iconColor}`}>
+                    <Icon className="size-5" />
+                  </div>
+                  <div className="font-medium">{title}</div>
+                  <p className="text-sm text-muted-foreground">{description}</p>
+                </Card>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

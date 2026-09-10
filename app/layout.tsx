@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import RoolLayoutProvider from '@/components/providers/root-layout-provider';
+import { QueryProvider } from '@/components/providers/query-provider';
 
 const inter = Inter({
   subsets: ["latin"],
@@ -30,16 +31,18 @@ const RootLayout = ({
     <ClerkProvider>
       <html lang="en" className={inter.variable} suppressHydrationWarning>
         <body>
-          <RoolLayoutProvider>
-            <ThemeProvider
-              attribute="class"
-              defaultTheme="system"
-              enableSystem
-              disableTransitionOnChange
-            >
-              {children}
-            </ThemeProvider>
-          </RoolLayoutProvider>
+          <QueryProvider>
+            <RoolLayoutProvider>
+              <ThemeProvider
+                attribute="class"
+                defaultTheme="system"
+                enableSystem
+                disableTransitionOnChange
+              >
+                {children}
+              </ThemeProvider>
+            </RoolLayoutProvider>
+          </QueryProvider>
         </body>
       </html>
     </ClerkProvider>
