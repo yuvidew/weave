@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/sidebar"
 import { ChevronRightIcon } from "lucide-react"
 import { cn } from "cn"
+import { usePathname } from "next/navigation"
 
 /**
  * @component NavMain
@@ -38,6 +39,8 @@ export const NavMain = ({
     }[]
   }[]
 }) => {
+  const pathname = usePathname()
+
   return (
     <SidebarGroup>
       <SidebarGroupLabel>Workspace</SidebarGroupLabel>
@@ -56,6 +59,7 @@ export const NavMain = ({
                     tooltip={item.title}
                     size="lg"
                     className="group-data-[collapsible=icon]:justify-center"
+                    isActive={item.url == pathname}
                   />
                 }
               >
@@ -89,6 +93,7 @@ export const NavMain = ({
                 render={<a href={item.url} />}
                 size="lg"
                 className="group-data-[collapsible=icon]:justify-center items-center "
+                isActive={item.url == pathname}
               >
                 <span
                   className={cn(
