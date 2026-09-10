@@ -68,3 +68,17 @@ export type CreatAgentType = {
   updatedAt: string;
 }
 
+// Every editable field lives on one object instead of a useState per field —
+// keeps the (un)seed/reset logic in one place and each update a single setForm call.
+export type AgentFormState = {
+    name: string
+    agentImage: string
+    prompt: string
+    instructions: string
+    outputFormat: string
+    schedule: AgentSchedule
+    skills: string[]
+    newSkill: string
+    // Connection status per tool slug — visual only, no real connect/disconnect exists yet.
+    connectedTools: Record<string, boolean>
+}

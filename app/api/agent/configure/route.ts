@@ -5,6 +5,7 @@ import { agent_config_system_prompt } from "@/constant/prompts";
 import { agent_config_response } from "@/constant/response_schema";
 import { AgentConfig, db, tools } from "@/db";
 import { currentUser } from "@clerk/nextjs/server";
+import { and, eq } from "drizzle-orm";
 
 // Groq returns 503 when a model is temporarily overloaded and 429 when
 // rate-limited — both are transient, so retry a couple times with a short
@@ -102,4 +103,43 @@ export const POST = async (req: NextRequest) => {
             }
         )
     }
+}
+
+
+export const PUT = async (req: NextRequest) => {
+    const { agentId, agentConfig } = await req.json();
+    const user = await currentUser()
+
+    if (!agentId) {
+        return NextResponse.json({ error: "agentId is required" }, { status: 400 })
+    }
+
+    try{
+
+        // Scope the update to the requesting user's own agent — without a `where`
+        // clause `db.update` touches every row in the table.
+        const result = await db.update(AgentConfig)
+            .set({ ...agentConfig, updatedAt: new Date() })
+            .where(and(
+                eq(AgentConfig.agentId, agentId),
+                eq(AgentConfig.userEmail, user?.primaryEmailAddress?.emailAddress ?? "")
+            ))
+            .returning();
+    
+        if (!result[0]) {
+            return NextResponse.json({ error: "Agent not found" }, { status: 404 })
+        }
+    
+        return NextResponse.json(result[0])
+    }catch(error){
+         return NextResponse.json(
+            {
+                error : "Internal server error",
+            },
+            {
+                status :500
+            }
+        )
+    }
+
 }

@@ -17,7 +17,7 @@ import {
   PlusIcon,
   SearchIcon,
 } from "lucide-react"
-import { useAgentConfigure } from "@/features/agents/hook/use-agent-configure"
+import { useAgentConfigure } from "@/features/agents/hook/use-agent"
 import { isAxiosError } from "axios"
 import { AiAgentQues } from "./ai-agent-ques"
 import { NewAgentCard } from "./agent-card"
