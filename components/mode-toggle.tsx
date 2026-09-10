@@ -6,8 +6,13 @@ import { useTheme } from "next-themes"
 
 import { Button } from "@/components/ui/button"
 
-export function ModeToggle() {
+/**
+ * @component ModeToggle
+ * @description Icon button that flips the app between light and dark theme.
+ */
+export const ModeToggle = () => {
   const { resolvedTheme, setTheme } = useTheme()
+  // Whether the client has hydrated — gates rendering the theme-dependent icon.
   const [mounted, setMounted] = React.useState(false)
 
   // Avoid rendering theme-dependent UI until mounted, to prevent hydration mismatch.
@@ -15,7 +20,8 @@ export function ModeToggle() {
     setMounted(true)
   }, [])
 
-  function toggleTheme() {
+  // Flips between the two themes based on the currently resolved one.
+  const toggleTheme = () => {
     setTheme(resolvedTheme === "dark" ? "light" : "dark")
   }
 

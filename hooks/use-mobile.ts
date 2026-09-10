@@ -1,8 +1,10 @@
 import * as React from "react"
 
+// Viewport width (px) below which the UI switches to its mobile layout.
 const MOBILE_BREAKPOINT = 768
 
-export function useIsMobile() {
+// Tracks whether the viewport is currently narrower than `MOBILE_BREAKPOINT`.
+export const useIsMobile = () => {
   const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
 
   React.useEffect(() => {
