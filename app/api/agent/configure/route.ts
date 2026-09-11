@@ -5,7 +5,7 @@ import { agent_config_system_prompt } from "@/constant/prompts";
 import { agent_config_response } from "@/constant/response_schema";
 import { AgentConfig, db, tools } from "@/db";
 import { currentUser } from "@clerk/nextjs/server";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, or } from "drizzle-orm";
 
 // Groq returns 503 when a model is temporarily overloaded and 429 when
 // rate-limited — both are transient, so retry a couple times with a short
@@ -154,7 +154,7 @@ export const GET = async (req: NextRequest) => {
         }, { status: 400 })
     }
     const result = await db.select().from(AgentConfig).where(eq(AgentConfig.userEmail, user?.primaryEmailAddress?.emailAddress ?? ""))
-    .orderBy(desc(AgentConfig.createdAt))
+    .orderBy(desc(AgentConfig.updatedAt))
 
     return NextResponse.json(result)
 }

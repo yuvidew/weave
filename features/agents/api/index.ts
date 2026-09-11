@@ -1,5 +1,5 @@
 import axios from "axios"
-import type { AgentConfigResponse, CreatAgentType } from "../types"
+import type { AgentConfigResponse, AgentToolsResponse, ConnectToolResponse, CreatAgentType } from "../types"
 
 // Calls the agent-config generation endpoint with the user's prompt (on a
 // clarification follow-up, the caller appends prior answers to the prompt
@@ -21,6 +21,34 @@ export const editAgent = async ({ agentId, agentConfig }: { agentId: string; age
 
 export const allAgents = async () => {
   const { data } = await axios.get<CreatAgentType[]>("/api/agent/configure")
+
+  return data
+}
+
+// Fetches an agent's tools with their real name/logo/connected state, resolved
+// against its Pipedream Connect account.
+export const getAgentTools = async (agentId: string) => {
+  const { data } = await axios.get<AgentToolsResponse>("/api/agent/tools", {
+    params: { agentId },
+  })
+
+  return data.tools
+}
+
+// Mints a Pipedream Connect token for one agent/tool pair and returns the
+// hosted Connect Link URL to open — the caller (useConnectTool) opens it in
+// a new tab so the user can run that tool's OAuth flow.
+export const createToolConnectUrl = async ({ agentId, slug }: { agentId: string; slug: string }) => {
+  const { data } = await axios.post<ConnectToolResponse>("/api/agent/tools/connect", { agentId, slug })
+
+  return data.url
+}
+
+// Removes the agent's connected account for one tool.
+export const disconnectTool = async ({ agentId, slug }: { agentId: string; slug: string }) => {
+  const { data } = await axios.delete<{ success: boolean }>("/api/agent/tools/connect", {
+    data: { agentId, slug },
+  })
 
   return data
 }

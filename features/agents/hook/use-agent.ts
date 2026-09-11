@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import { toast } from "@/components/ui/toast"
-import { agentConfigure, allAgents, editAgent } from "../api"
+import { agentConfigure, allAgents, createToolConnectUrl, disconnectTool, editAgent, getAgentTools } from "../api"
 
 // Pulls the server's `{ error }` message out of a failed request, falling
 // back to a generic message for network errors or anything unexpected.
@@ -76,6 +76,59 @@ export const useAllAgents = () =>{
   return useQuery({
     queryFn : allAgents,
     queryKey : ["all-agents"]
+  })
+}
+
+// Fetches an agent's real tool data (name/logo/connected state) for the edit
+// sheet. `enabled` is threaded in explicitly so the fetch — which calls
+// Pipedream server-side — only fires while the sheet is open, not on every
+// render of a list of agent cards.
+export const useAgentTools = (agentId: string, enabled: boolean) => {
+  return useQuery({
+    queryFn: () => getAgentTools(agentId),
+    queryKey: ["agent-tools", agentId],
+    enabled: enabled && !!agentId,
+  })
+}
+
+// Starts a tool's Connect flow: mints a token server-side and opens the
+// returned Connect Link URL in a new tab. No manual "refetch on return"
+// plumbing needed — the query client's default `refetchOnWindowFocus`
+// re-runs useAgentTools as soon as the user comes back to this tab.
+export const useConnectTool = () => {
+  return useMutation({
+    mutationFn: createToolConnectUrl,
+    mutationKey: ["connect-tool"],
+    onSuccess: (url) => {
+      window.open(url, "_blank", "noopener,noreferrer")
+    },
+    onError: (error) => {
+      toast.add({
+        title: "Couldn't start the connect flow",
+        description: getErrorMessage(error, "Something went wrong starting that tool's connect flow. Please try again."),
+        type: "error",
+      })
+    },
+  })
+}
+
+// Disconnects one agent/tool pair, then refetches its row in the sheet.
+export const useDisconnectTool = () => {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: disconnectTool,
+    mutationKey: ["disconnect-tool"],
+    onSuccess: (_data, { agentId }) => {
+      queryClient.invalidateQueries({ queryKey: ["agent-tools", agentId] })
+    },
+    onError: (error) => {
+      toast.add({
+        title: "Couldn't disconnect",
+        description: getErrorMessage(error, "Something went wrong disconnecting that tool. Please try again."),
+        type: "error",
+      })
+    },
   })
 }
 

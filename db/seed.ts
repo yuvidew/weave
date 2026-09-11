@@ -5,7 +5,10 @@ import { tools } from "./schema";
 export async function seedTools() {
   await db.insert(tools).values([
     {
-      slug: "serp_search",
+      // "serpapi" is the actual Pipedream Connect app slug for this
+      // provider — must match exactly, or /api/agent/tools's
+      // apps.retrieve(slug) 404s and the tool never resolves.
+      slug: "serpapi",
       name: "SERP Search",
       description: "Search the web and retrieve search engine results, links, titles, and snippets.",
       category: "search",
@@ -27,17 +30,24 @@ export async function seedTools() {
       enabled: true,
     },
     {
+      // No "Google Search" app exists on Pipedream Connect — Google doesn't
+      // offer a general web-search app there. This slug stays distinct from
+      // "serpapi" above (tools.slug is unique, and this is meant to read as
+      // a separate catalog entry), but actually resolves to Pipedream's
+      // serpapi app under the hood via CATALOG_SLUG_TO_PIPEDREAM_APP in
+      // lib/pipedream.ts — so connecting/disconnecting this tool and the
+      // "serpapi" one above affect the same underlying connected account.
       slug: "google_search",
       name: "Google Search",
-      description: "Search the web via Google and retrieve ranked results, links, titles, and snippets.",
+      description: "Search the web via Google and retrieve ranked results, links, titles, and snippets. Backed by SerpApi (via Pipedream) rather than a Google API.",
       category: "search",
       type: "api",
-      provider: "google",
+      provider: "serpapi",
       icon: "search",
       status: "active",
       requireAuth: true,
       authType: "api_key",
-      authProvider: "google",
+      authProvider: "serpapi",
       capabilities: ["search_results", "link_extraction", "snippet_parsing"],
       useCases: ["research", "fact_checking", "current_events"],
       permissions: ["read"],
@@ -95,7 +105,9 @@ export async function seedTools() {
       enabled: true,
     },
     {
-      slug: "slack",
+      // "slack" on Pipedream Connect resolves to "Slack (legacy)" — the
+      // current app is "slack_v2".
+      slug: "slack_v2",
       name: "Slack",
       description: "Read channels, search messages, and send notifications to Slack.",
       category: "communication",
