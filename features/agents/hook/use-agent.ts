@@ -1,7 +1,7 @@
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import { toast } from "@/components/ui/toast"
-import { agentConfigure, editAgent } from "../api"
+import { agentConfigure, allAgents, editAgent } from "../api"
 
 // Pulls the server's `{ error }` message out of a failed request, falling
 // back to a generic message for network errors or anything unexpected.
@@ -16,10 +16,12 @@ const getErrorMessage = (error: unknown, fallback: string) =>
 // "needs_clarification" response is still a successful call, but AiAgentQues
 // already surfaces that inline, so a toast there would just be noise.
 export const useAgentConfigure = () => {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: agentConfigure,
     mutationKey: ["agent-configure"],
     onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["all-agents"] })
       if (data.status === "ready" && data.agent) {
         toast.add({
           title: "Agent created",
@@ -44,10 +46,12 @@ export const useAgentConfigure = () => {
 // Wraps editAgent in a mutation so AgentEditSheet gets loading/error state
 // for free and can trigger a save imperatively from the "Save changes" button.
 export const useEditAgent = () => {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: editAgent,
     mutationKey: ["edit-agent"],
     onSuccess: (agent) => {
+      queryClient.invalidateQueries({ queryKey: ["all-agents"] })
       toast.add({
         title: "Agent updated",
         description: `${agent.name} was saved.`,
@@ -60,6 +64,43 @@ export const useEditAgent = () => {
         description: getErrorMessage(
           error,
           "Something went wrong saving your changes. Please try again."
+        ),
+        type: "error",
+      })
+    },
+  })
+}
+
+
+export const useAllAgents = () =>{
+  return useQuery({
+    queryFn : allAgents,
+    queryKey : ["all-agents"]
+  })
+}
+
+// Flips an agent's active/inactive status via the existing edit endpoint,
+// then refetches the My Agents list so the card reflects the new state.
+export const useToggleAgentStatus = () => {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: editAgent,
+    mutationKey: ["toggle-agent-status"],
+    onSuccess: (agent) => {
+      queryClient.invalidateQueries({ queryKey: ["all-agents"] })
+      toast.add({
+        title: agent.status === "active" ? "Agent activated" : "Agent paused",
+        description: `${agent.name} is now ${agent.status}.`,
+        type: "success",
+      })
+    },
+    onError: (error) => {
+      toast.add({
+        title: "Couldn't update status",
+        description: getErrorMessage(
+          error,
+          "Something went wrong updating the agent's status. Please try again."
         ),
         type: "error",
       })

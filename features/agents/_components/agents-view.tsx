@@ -14,7 +14,7 @@ export const AgentView = () => {
     const [tab, setTab] = useState("create-agent")
 
     return (
-        <div className='w-full max-w-3xl px-6 pt-20 pb-16'>
+        <div className='w-full max-w-4xl px-6 pt-20 pb-16'>
             <Tabs value={tab} onValueChange={setTab} >
                 <TabsList>
                     <TabsTrigger value="create-agent">Create Agent</TabsTrigger>
@@ -24,7 +24,7 @@ export const AgentView = () => {
                     <CreateAgent onViewAll={() => setTab("my-agents")} />
                 </TabsContent>
                 <TabsContent value="my-agents">
-                    <MyAgents/>
+                    <MyAgents onCreateAgent={() => setTab("create-agent")} />
                 </TabsContent>
             </Tabs>
         </div>

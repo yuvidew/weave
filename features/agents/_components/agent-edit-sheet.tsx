@@ -51,11 +51,19 @@ import type { AgentFormState, CreatAgentType, ScheduleFrequency, ScheduleType } 
 interface AgentEditSheetProps {
     // Rendered as the trigger element itself (via SheetTrigger's `render`) rather
     // than wrapped in an extra <button>, so a <Button> child doesn't nest <button>s.
-    children: ReactElement
+    // Omit this and drive `open`/`onOpenChange` instead when the opener isn't a
+    // real button-like element — e.g. a DropdownMenuItem, which Base UI's Sheet
+    // trigger can't merge its click handling onto.
+    children?: ReactElement
     agent: CreatAgentType
     // Called with the freshly-saved row once the update succeeds, so a parent
     // holding its own copy of this agent (e.g. a list) can stay in sync.
     onUpdated?: (agent: CreatAgentType) => void
+    // Controlled open state, for callers that open this sheet from something
+    // other than `children` (see `children` above). Uncontrolled (self-managed)
+    // when omitted, which is how every `children`-as-trigger usage works.
+    open?: boolean
+    onOpenChange?: (open: boolean) => void
 }
 
 
@@ -70,10 +78,13 @@ const buildFormState = (agent: CreatAgentType): AgentFormState => ({
     prompt: agent.description ?? "",
     instructions: agent.instructions ?? "",
     outputFormat: agent.outputFormat ?? "",
+    // Some older/real DB rows have a null schedule — fall back to a
+    // sensible manual/daily default instead of crashing on agent.schedule.*.
     schedule: {
         ...agent.schedule,
-        time: agent.schedule.time ?? "",
-        frequency: agent.schedule.frequency ?? "daily",
+        type: agent.schedule?.type ?? "manual",
+        time: agent.schedule?.time ?? "",
+        frequency: agent.schedule?.frequency ?? "daily",
     },
     skills: agent.skills ?? [],
     newSkill: "",
@@ -105,8 +116,13 @@ const randomAgentImage = () =>
  * @param children The element that opens the sheet (rendered as the trigger itself via SheetTrigger's `render`).
  * @param onUpdated Called with the saved agent once the update succeeds.
  */
-export const AgentEditSheet = ({ children, agent, onUpdated }: AgentEditSheetProps) => {
-    const [open, setOpen] = useState(false)
+export const AgentEditSheet = ({ children, agent, onUpdated, open: openProp, onOpenChange }: AgentEditSheetProps) => {
+    // Falls back to self-managed open state unless the caller controls it
+    // (passes `open`/`onOpenChange`) — see the `children`/`open` doc comments above.
+    const [internalOpen, setInternalOpen] = useState(false)
+    const isControlled = openProp !== undefined
+    const open = isControlled ? openProp : internalOpen
+    const setOpen = isControlled ? (onOpenChange ?? (() => {})) : setInternalOpen
     const [form, setForm] = useState<AgentFormState>(() => buildFormState(agent))
     const { mutate: saveAgent, isPending, error } = useEditAgent()
 
@@ -162,7 +178,7 @@ export const AgentEditSheet = ({ children, agent, onUpdated }: AgentEditSheetPro
                 setOpen(nextOpen)
             }}
         >
-            <SheetTrigger render={children} />
+            {children && <SheetTrigger render={children} />}
             <SheetContent className="sm:max-w-md">
                 <SheetHeader className='border-b px-5 py-4'>
                     <div className="flex items-center gap-2.5">
@@ -364,7 +380,7 @@ export const AgentEditSheet = ({ children, agent, onUpdated }: AgentEditSheetPro
                                             <ItemActions>
                                                 <Button
                                                     type="button"
-                                                    variant="secondary"
+                                                    variant="success"
                                                     size="sm"
                                                     onClick={() =>
                                                         setForm((prev) => ({

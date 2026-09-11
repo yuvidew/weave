@@ -5,7 +5,7 @@ import { agent_config_system_prompt } from "@/constant/prompts";
 import { agent_config_response } from "@/constant/response_schema";
 import { AgentConfig, db, tools } from "@/db";
 import { currentUser } from "@clerk/nextjs/server";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 // Groq returns 503 when a model is temporarily overloaded and 429 when
 // rate-limited — both are transient, so retry a couple times with a short
@@ -32,16 +32,16 @@ const generateWithRetry = async (
 }
 
 export const POST = async (req: NextRequest) => {
-    const {prompt} = await req.json();
+    const { prompt } = await req.json();
     const user = await currentUser()
 
-    if(!prompt?.trim()){
+    if (!prompt?.trim()) {
         return NextResponse.json(
             {
-                error : "Prompt is required",
+                error: "Prompt is required",
             },
             {
-                status : 400
+                status: 400
             }
         )
     }
@@ -60,8 +60,8 @@ export const POST = async (req: NextRequest) => {
 
         const response = await generateWithRetry(groq, {
             model: "openai/gpt-oss-120b",
-            messages : [{ role: "user", content }],
-            response_format : {
+            messages: [{ role: "user", content }],
+            response_format: {
                 type: "json_schema",
                 json_schema: agent_config_response,
             },
@@ -71,13 +71,13 @@ export const POST = async (req: NextRequest) => {
 
         const aiOutput = JSON.parse(text ?? "{}");
 
-        if(aiOutput.status === "ready"){
+        if (aiOutput.status === "ready") {
             const agentId = crypto.randomUUID()
             const [agent] = await db.insert(AgentConfig).values({
                 ...aiOutput.config,
-                agentImage : `https://api.dicebear.com/10.x/voxel-bot/svg?tags=animation&seed=${agentId}`,
-                agentId : agentId,
-                userEmail : user?.primaryEmailAddress?.emailAddress
+                agentImage: `https://api.dicebear.com/10.x/voxel-bot/svg?tags=animation&seed=${agentId}`,
+                agentId: agentId,
+                userEmail: user?.primaryEmailAddress?.emailAddress
             }).returning();
 
             // `dbResult` from `.returning()` is an array — spreading it directly
@@ -94,12 +94,12 @@ export const POST = async (req: NextRequest) => {
 
         return NextResponse.json(
             {
-                error : isOverloaded
+                error: isOverloaded
                     ? "The AI model is temporarily overloaded. Please try again in a moment."
                     : "Failed to generate agent configuration",
             },
             {
-                status : isOverloaded ? 503 : 500
+                status: isOverloaded ? 503 : 500
             }
         )
     }
@@ -114,7 +114,7 @@ export const PUT = async (req: NextRequest) => {
         return NextResponse.json({ error: "agentId is required" }, { status: 400 })
     }
 
-    try{
+    try {
 
         // Scope the update to the requesting user's own agent — without a `where`
         // clause `db.update` touches every row in the table.
@@ -125,21 +125,36 @@ export const PUT = async (req: NextRequest) => {
                 eq(AgentConfig.userEmail, user?.primaryEmailAddress?.emailAddress ?? "")
             ))
             .returning();
-    
+
         if (!result[0]) {
             return NextResponse.json({ error: "Agent not found" }, { status: 404 })
         }
-    
+
         return NextResponse.json(result[0])
-    }catch(error){
-         return NextResponse.json(
+    } catch (error) {
+        return NextResponse.json(
             {
-                error : "Internal server error",
+                error: "Internal server error",
             },
             {
-                status :500
+                status: 500
             }
         )
     }
 
+}
+
+
+export const GET = async (req: NextRequest) => {
+    const user = await currentUser();
+
+    if (!user) {
+        return NextResponse.json({
+            error: "Unauthorized User",
+        }, { status: 400 })
+    }
+    const result = await db.select().from(AgentConfig).where(eq(AgentConfig.userEmail, user?.primaryEmailAddress?.emailAddress ?? ""))
+    .orderBy(desc(AgentConfig.createdAt))
+
+    return NextResponse.json(result)
 }
