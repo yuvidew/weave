@@ -50,6 +50,26 @@ export type AgentConfigResponse = {
   agent?: CreatAgentType
 }
 
+export type toolType = {
+  name : string;
+  connected : boolean;
+  slug : string
+  logo : string
+  connectedAccountId : string | null
+}
+
+// Body of GET /api/agent/tools?agentId=... — per-slug tool info (name/logo/
+// connected state) resolved against the agent's Pipedream Connect account.
+export type AgentToolsResponse = {
+  tools: toolType[]
+}
+
+// Body of POST /api/agent/tools/connect — the hosted Connect Link URL to open
+// so the user can run that tool's OAuth flow.
+export type ConnectToolResponse = {
+  url: string
+}
+
 export type CreatAgentType = {
   id: number;
   userEmail: string;
@@ -79,6 +99,4 @@ export type AgentFormState = {
     schedule: AgentSchedule
     skills: string[]
     newSkill: string
-    // Connection status per tool slug — visual only, no real connect/disconnect exists yet.
-    connectedTools: Record<string, boolean>
 }

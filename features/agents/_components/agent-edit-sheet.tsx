@@ -45,7 +45,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Item, ItemActions, ItemContent, ItemMedia, ItemTitle } from '@/components/ui/item';
-import { useEditAgent } from '../hook/use-agent';
+import { useConnectTool, useDisconnectTool, useEditAgent, useAgentTools } from '../hook/use-agent';
 import type { AgentFormState, CreatAgentType, ScheduleFrequency, ScheduleType } from "../types"
 
 interface AgentEditSheetProps {
@@ -88,7 +88,6 @@ const buildFormState = (agent: CreatAgentType): AgentFormState => ({
     },
     skills: agent.skills ?? [],
     newSkill: "",
-    connectedTools: Object.fromEntries((agent.tools ?? []).map((slug) => [slug, true])),
 })
 
 // Known tool slugs mapped to a display label and icon — falls back to a
@@ -125,6 +124,12 @@ export const AgentEditSheet = ({ children, agent, onUpdated, open: openProp, onO
     const setOpen = isControlled ? (onOpenChange ?? (() => {})) : setInternalOpen
     const [form, setForm] = useState<AgentFormState>(() => buildFormState(agent))
     const { mutate: saveAgent, isPending, error } = useEditAgent()
+    // Only fetches (and only triggers the server-side Pipedream lookup)
+    // while the sheet is actually open. This is the real source of truth for
+    // each tool's connected state — no local toggle to keep in sync anymore.
+    const { data: fetchedTools, isLoading: toolsLoading } = useAgentTools(agent.agentId, open)
+    const connectTool = useConnectTool()
+    const disconnectTool = useDisconnectTool()
 
     // Restores every field to the agent's original values.
     const resetForm = () => setForm(buildFormState(agent))
@@ -168,7 +173,7 @@ export const AgentEditSheet = ({ children, agent, onUpdated, open: openProp, onO
         setForm((prev) => ({ ...prev, skills: prev.skills.filter((s) => s !== skill) }))
     }
 
-    const connectedCount = Object.values(form.connectedTools).filter(Boolean).length
+    const connectedCount = fetchedTools?.filter((tool) => tool.connected).length ?? 0
 
     return (
         <Sheet
@@ -361,18 +366,41 @@ export const AgentEditSheet = ({ children, agent, onUpdated, open: openProp, onO
                             <FieldDescription>
                                 {connectedCount} of {(agent.tools ?? []).length} connected
                             </FieldDescription>
-                            <div className="mt-3 flex flex-col gap-2">
+                            {toolsLoading && (
+                                <p className="text-xs text-muted-foreground">Loading tools…</p>
+                            )}
+                            {/* Blurred (instead of hidden) while `useAgentTools` is still in
+                                flight — rows already have something to show via the
+                                TOOL_DISPLAY fallback, so a light blur reads as "loading" without
+                                the list jumping/disappearing once the real data lands. */}
+                            <div
+                                className={`mt-3 flex flex-col gap-2 transition-[filter,opacity] duration-300 ${
+                                    toolsLoading ? "blur-[2px] opacity-70 pointer-events-none" : ""
+                                }`}
+                            >
                                 {(agent.tools ?? []).map((slug) => {
                                     const display = TOOL_DISPLAY[slug]
                                     const Icon = display?.icon ?? LinkIcon
-                                    const isConnected = form.connectedTools[slug]
+                                    // Real name/logo/connected state from Pipedream once loaded —
+                                    // falls back to the static label/icon map, disconnected, while
+                                    // loading or if a slug isn't found.
+                                    const fetchedTool = fetchedTools?.find((tool) => tool.slug === slug)
+                                    const isConnected = fetchedTool?.connected ?? false
+                                    // One mutation instance is shared across every row — only
+                                    // disable/spin the row whose slug is the one actually in flight.
+                                    const isConnecting = connectTool.isPending && connectTool.variables?.slug === slug
+                                    const isDisconnecting = disconnectTool.isPending && disconnectTool.variables?.slug === slug
                                     return (
                                         <Item key={slug} variant="outline">
                                             <ItemMedia variant="icon">
-                                                <Icon />
+                                                {fetchedTool?.logo ? (
+                                                    <img src={fetchedTool.logo} alt="" className="size-6" />
+                                                ) : (
+                                                    <Icon />
+                                                )}
                                             </ItemMedia>
                                             <ItemContent>
-                                                <ItemTitle>{display?.label ?? slug}</ItemTitle>
+                                                <ItemTitle>{fetchedTool?.name ?? display?.label ?? slug}</ItemTitle>
                                                 <span className={isConnected ? "text-xs text-emerald-600 dark:text-emerald-400" : "text-xs text-muted-foreground"}>
                                                     {isConnected ? "Connected" : "Disconnected"}
                                                 </span>
@@ -382,16 +410,14 @@ export const AgentEditSheet = ({ children, agent, onUpdated, open: openProp, onO
                                                     type="button"
                                                     variant="success"
                                                     size="sm"
+                                                    disabled={isConnecting || isDisconnecting}
                                                     onClick={() =>
-                                                        setForm((prev) => ({
-                                                            ...prev,
-                                                            connectedTools: {
-                                                                ...prev.connectedTools,
-                                                                [slug]: !prev.connectedTools[slug],
-                                                            },
-                                                        }))
+                                                        isConnected
+                                                            ? disconnectTool.mutate({ agentId: agent.agentId, slug })
+                                                            : connectTool.mutate({ agentId: agent.agentId, slug })
                                                     }
                                                 >
+                                                    {(isConnecting || isDisconnecting) && <Loader2Icon className="animate-spin" />}
                                                     {isConnected ? "Disconnect" : "Connect"}
                                                 </Button>
                                             </ItemActions>
