@@ -46,6 +46,7 @@ import {
 } from '@/components/ui/select';
 import { Item, ItemActions, ItemContent, ItemMedia, ItemTitle } from '@/components/ui/item';
 import { useConnectTool, useDisconnectTool, useEditAgent, useAgentTools } from '../hook/use-agent';
+import { isDirectAuthTool } from '@/constant/direct-auth-tools';
 import type { AgentFormState, CreatAgentType, ScheduleFrequency, ScheduleType } from "../types"
 
 interface AgentEditSheetProps {
@@ -99,6 +100,7 @@ const TOOL_DISPLAY: Record<string, { label: string; icon: typeof MailIcon }> = {
     google_calendar: { label: "Google Calendar", icon: CalendarIcon },
     google_search: { label: "Google Search", icon: SearchIcon },
     serp_search: { label: "SERP Search", icon: SearchIcon },
+    serpapi: { label: "SERP Search", icon: SearchIcon },
     browserbase: { label: "Browserbase", icon: LinkIcon },
 }
 
@@ -406,20 +408,26 @@ export const AgentEditSheet = ({ children, agent, onUpdated, open: openProp, onO
                                                 </span>
                                             </ItemContent>
                                             <ItemActions>
-                                                <Button
-                                                    type="button"
-                                                    variant="success"
-                                                    size="sm"
-                                                    disabled={isConnecting || isDisconnecting}
-                                                    onClick={() =>
-                                                        isConnected
-                                                            ? disconnectTool.mutate({ agentId: agent.agentId, slug })
-                                                            : connectTool.mutate({ agentId: agent.agentId, slug })
-                                                    }
-                                                >
-                                                    {(isConnecting || isDisconnecting) && <Loader2Icon className="animate-spin" />}
-                                                    {isConnected ? "Disconnect" : "Connect"}
-                                                </Button>
+                                                {isDirectAuthTool(slug) ? (
+                                                    // Shared server-side credential, not a per-agent OAuth
+                                                    // grant — nothing to connect/disconnect here.
+                                                    <Badge variant="secondary">Available</Badge>
+                                                ) : (
+                                                    <Button
+                                                        type="button"
+                                                        variant="success"
+                                                        size="sm"
+                                                        disabled={isConnecting || isDisconnecting}
+                                                        onClick={() =>
+                                                            isConnected
+                                                                ? disconnectTool.mutate({ agentId: agent.agentId, slug })
+                                                                : connectTool.mutate({ agentId: agent.agentId, slug })
+                                                        }
+                                                    >
+                                                        {(isConnecting || isDisconnecting) && <Loader2Icon className="animate-spin" />}
+                                                        {isConnected ? "Disconnect" : "Connect"}
+                                                    </Button>
+                                                )}
                                             </ItemActions>
                                         </Item>
                                     )

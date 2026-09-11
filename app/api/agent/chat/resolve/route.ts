@@ -8,6 +8,10 @@ import { and, asc, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { runChatTurn, type StoredToolCall } from "../_lib";
 
+// See app/api/agent/chat/route.ts — this route can also execute a
+// long-polling direct action (e.g. an approved browser_research call).
+export const maxDuration = 300
+
 export const POST = async (req: NextRequest) => {
     const { agentId, messageId, toolCallId, decision } = await req.json()
 
@@ -55,6 +59,20 @@ export const POST = async (req: NextRequest) => {
         } else if (!action) {
             updatedCall.status = "error"
             updatedCall.error = "Unknown action."
+        } else if (action.run) {
+            // Direct (non-Pipedream) action — no connected account needed.
+            // Not reached today (every direct action sets needsApproval:
+            // false, so it never lands in this pending-approval flow), but
+            // handled for parity with app/api/agent/chat/_lib.ts's runChatTurn
+            // in case a future direct action ever requests approval.
+            try {
+                const result = await action.run(call.arguments)
+                updatedCall.status = "done"
+                updatedCall.result = result
+            } catch (error) {
+                updatedCall.status = "error"
+                updatedCall.error = error instanceof Error ? error.message : "Action failed."
+            }
         } else {
             const allowedTools: string[] = Array.isArray(agent.tools) ? agent.tools : []
             const connectedTools = await getConnectedTools(agentId, allowedTools)

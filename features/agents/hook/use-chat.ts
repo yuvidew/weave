@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import { toast } from "@/components/ui/toast"
 import { getChatHistory, resolveToolCall, sendChatMessage } from "../api"
@@ -44,6 +44,25 @@ export const useSendChatMessage = () => {
       })
     },
   })
+}
+
+// Reads "is a message currently being sent for this agent" from the shared
+// mutation cache rather than a local useSendChatMessage() instance's
+// `isPending` — a direct action like browser_research can take up to a few
+// minutes, and if ChatSheet unmounts and remounts while that's in flight
+// (sheet closed/reopened, tab switched away and back), a fresh mutation
+// hook's `isPending` starts back at false even though the request is still
+// running server-side. That let the composer re-enable mid-flight and send
+// the same question again, landing two copies of it once both replies
+// eventually came back. Mutation state itself survives the remount (it
+// lives on the QueryClient, not the component), so reading it this way
+// keeps the composer correctly locked no matter what remounts in between.
+export const usePendingChatMessage = (agentId: string) => {
+  const pending = useMutationState({
+    filters: { mutationKey: ["send-chat-message"], status: "pending" },
+    select: (mutation) => mutation.state.variables as { agentId: string; message: string } | undefined,
+  })
+  return pending.find((variables) => variables?.agentId === agentId) ?? null
 }
 
 // Approves or rejects one pending tool call.

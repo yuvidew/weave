@@ -1,4 +1,5 @@
 import { AgentConfig, db } from "@/db";
+import { isDirectAuthTool } from "@/constant/direct-auth-tools";
 import { pipedream, resolvePipedreamAppSlug } from "@/lib/pipedream";
 import { currentUser } from "@clerk/nextjs/server";
 import { PipedreamError } from "@pipedream/sdk";
@@ -30,6 +31,14 @@ export const POST = async (req: NextRequest) => {
 
     if (!agentId || !slug) {
         return NextResponse.json({ error: "agentId and slug are required" }, { status: 400 })
+    }
+
+    // Direct-auth tools (e.g. "browserbase") use a shared server-side
+    // credential, not a per-agent Pipedream OAuth connection — there's no
+    // connect flow to mint a token for. The UI never calls this for such a
+    // slug (see agent-edit-sheet.tsx), but guard it here too.
+    if (isDirectAuthTool(slug)) {
+        return NextResponse.json({ error: "This tool doesn't use the connect flow — it's available automatically." }, { status: 400 })
     }
 
     const user = await currentUser();
@@ -74,6 +83,11 @@ export const DELETE = async (req: NextRequest) => {
 
     if (!agentId || !slug) {
         return NextResponse.json({ error: "agentId and slug are required" }, { status: 400 })
+    }
+
+    // Same as POST above — nothing to disconnect for a direct-auth tool.
+    if (isDirectAuthTool(slug)) {
+        return NextResponse.json({ error: "This tool doesn't use the connect flow — it's available automatically." }, { status: 400 })
     }
 
     const user = await currentUser();
