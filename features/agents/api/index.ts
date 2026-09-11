@@ -1,5 +1,13 @@
 import axios from "axios"
-import type { AgentConfigResponse, AgentToolsResponse, ConnectToolResponse, CreatAgentType } from "../types"
+import type {
+  AgentConfigResponse,
+  AgentToolsResponse,
+  ChatHistoryResponse,
+  ConnectToolResponse,
+  CreatAgentType,
+  ResolveToolCallResponse,
+  SendChatMessageResponse,
+} from "../types"
 
 // Calls the agent-config generation endpoint with the user's prompt (on a
 // clarification follow-up, the caller appends prior answers to the prompt
@@ -51,4 +59,33 @@ export const disconnectTool = async ({ agentId, slug }: { agentId: string; slug:
   })
 
   return data
+}
+
+// Loads an agent's full chat transcript, oldest first.
+export const getChatHistory = async (agentId: string) => {
+  const { data } = await axios.get<ChatHistoryResponse>("/api/agent/chat", { params: { agentId } })
+
+  return data.messages
+}
+
+// Sends a chat message and returns the agent's newest reply — which may
+// itself be a pending tool-call approval card rather than plain text; the
+// caller renders based on `message.toolCalls`.
+export const sendChatMessage = async ({ agentId, message }: { agentId: string; message: string }) => {
+  const { data } = await axios.post<SendChatMessageResponse>("/api/agent/chat", { agentId, message })
+
+  return data.message
+}
+
+// Approves or rejects one pending tool call and returns the agent's
+// follow-up reply once every call in that batch has settled.
+export const resolveToolCall = async (params: {
+  agentId: string
+  messageId: number
+  toolCallId: string
+  decision: "approve" | "reject"
+}) => {
+  const { data } = await axios.post<ResolveToolCallResponse>("/api/agent/chat/resolve", params)
+
+  return data.message
 }

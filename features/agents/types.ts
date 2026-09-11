@@ -100,3 +100,37 @@ export type AgentFormState = {
     skills: string[]
     newSkill: string
 }
+
+// Lifecycle of one tool call an agent requested during chat — mirrors
+// db/schema.ts's chatMessages.toolCalls and app/api/agent/chat/_lib.ts's
+// StoredToolCall. "pending" means it needs the user's approval before it
+// runs (see ChatSheet's approval card).
+export type ChatToolCallStatus = "pending" | "approved" | "rejected" | "done" | "error"
+
+export type ChatToolCall = {
+  id: string
+  name: string
+  arguments: Record<string, unknown>
+  label: string
+  needsApproval: boolean
+  status: ChatToolCallStatus
+  result?: unknown
+  error?: string
+}
+
+export type ChatMessageRole = "user" | "assistant" | "tool"
+
+// One row from the chatMessages table (GET/POST /api/agent/chat).
+export type ChatMessageRow = {
+  id: number
+  agentId: string
+  role: ChatMessageRole
+  content: string | null
+  toolCallId: string | null
+  toolCalls: ChatToolCall[] | null
+  createdAt: string
+}
+
+export type ChatHistoryResponse = { messages: ChatMessageRow[] }
+export type SendChatMessageResponse = { message: ChatMessageRow }
+export type ResolveToolCallResponse = { message: ChatMessageRow }

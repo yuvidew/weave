@@ -1,35 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import Groq, { APIError } from "groq-sdk";
-import type { ChatCompletionCreateParamsNonStreaming } from "groq-sdk/resources/chat/completions";
 import { agent_config_system_prompt } from "@/constant/prompts";
 import { agent_config_response } from "@/constant/response_schema";
 import { AgentConfig, db, tools } from "@/db";
 import { currentUser } from "@clerk/nextjs/server";
 import { and, desc, eq, or } from "drizzle-orm";
-
-// Groq returns 503 when a model is temporarily overloaded and 429 when
-// rate-limited — both are transient, so retry a couple times with a short
-// backoff before giving up instead of failing the whole request immediately.
-const generateWithRetry = async (
-    groq: Groq,
-    params: ChatCompletionCreateParamsNonStreaming,
-    attempts = 3
-) => {
-    for (let attempt = 1; attempt <= attempts; attempt++) {
-        try {
-            return await groq.chat.completions.create(params)
-        } catch (error) {
-            const isRetryable = error instanceof APIError && (error.status === 503 || error.status === 429)
-
-            if (!isRetryable || attempt === attempts) throw error
-
-            await new Promise((resolve) => setTimeout(resolve, attempt * 500))
-        }
-    }
-
-    // Unreachable — the loop above always returns or throws.
-    throw new Error("generateWithRetry exhausted its attempts without a result")
-}
+import { GROQ_MODEL, generateWithRetry, groq, isGroqOverloaded } from "@/lib/groq";
 
 export const POST = async (req: NextRequest) => {
     const { prompt } = await req.json();
@@ -46,20 +21,16 @@ export const POST = async (req: NextRequest) => {
         )
     }
 
-    const apiKey = process.env.GROQ_API_KEY
-
     try {
         // Live tool slugs so the prompt reflects the `tools` table without a code change.
         const availableTools = await db.select({ slug: tools.slug }).from(tools);
-
-        const groq = new Groq({ apiKey })
 
         const content = agent_config_system_prompt
             .replace("{{AVAILABLE_TOOLS}}", availableTools.map((tool) => tool.slug).join(", "))
             .replace("{{USER_REQUEST}}", prompt)
 
         const response = await generateWithRetry(groq, {
-            model: "openai/gpt-oss-120b",
+            model: GROQ_MODEL,
             messages: [{ role: "user", content }],
             response_format: {
                 type: "json_schema",
@@ -90,7 +61,7 @@ export const POST = async (req: NextRequest) => {
     } catch (error) {
         console.log("Error", error)
 
-        const isOverloaded = error instanceof APIError && error.status === 503
+        const isOverloaded = isGroqOverloaded(error)
 
         return NextResponse.json(
             {

@@ -1,7 +1,7 @@
 import { AgentConfig, db } from "@/db";
+import { getConnectedTools } from "@/lib/agent-tools";
 import { pipedream, resolvePipedreamAppSlug } from "@/lib/pipedream";
 import { currentUser } from "@clerk/nextjs/server";
-import { PipedreamError } from "@pipedream/sdk";
 import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server"
 
@@ -51,17 +51,11 @@ export const GET = async (req: NextRequest) => {
     }
 
     try {
-        // One call covers every app this agent has ever connected — cheaper
-        // than a per-slug lookup, and there's no "session" to create/reuse
-        // like there was with Composio (agentId doubles as the externalUserId).
-        // Pipedream 404s this call (instead of returning []) for an
-        // externalUserId it's never seen before — i.e. an agent that's never
-        // had any tool connected yet — so that specific case means "no
-        // connected accounts," not a real failure.
-        const connectedAccounts = await pipedream.accounts.listByExternalUser(agentId).catch((error) => {
-            if (error instanceof PipedreamError && error.statusCode === 404) return []
-            throw error
-        })
+        // Single source of truth for "is this slug actually connected" —
+        // shared with the chat route, which uses it to decide which curated
+        // actions to offer the model. One call here covers every app this
+        // agent has ever connected — cheaper than a per-slug lookup.
+        const connectedTools = await getConnectedTools(agentId, allowedTools)
 
         // Accounts don't carry the app's name/logo when nothing's connected
         // yet, so fetch each allowed slug's app metadata directly — this is
@@ -74,17 +68,14 @@ export const GET = async (req: NextRequest) => {
 
         const tools = allowedTools.map((slug: string, index: number) => {
             const app = apps[index]?.data
-            const pipedreamAppSlug = resolvePipedreamAppSlug(slug)
-            const account = connectedAccounts.find(
-                (acc) => acc.app?.nameSlug?.toLowerCase() === pipedreamAppSlug.toLowerCase()
-            )
+            const connectedTool = connectedTools.find((tool) => tool.slug === slug)
 
             return {
                 slug,
                 name: app?.name ?? slug,
                 logo: app?.imgSrc ?? "",
-                connected: Boolean(account?.healthy) && !account?.dead,
-                connectedAccountId: account?.id ?? null,
+                connected: Boolean(connectedTool),
+                connectedAccountId: connectedTool?.connectedAccountId ?? null,
             }
         })
 
