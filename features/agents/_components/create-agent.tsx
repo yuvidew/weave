@@ -85,7 +85,7 @@ export const CreateAgent = ({ onViewAll }: { onViewAll?: () => void }) => {
 
 
   return (
-    <div className="flex flex-col gap-6 mt-5">
+    <div className="flex flex-col gap-6 mt-5  mx-auto">
       <div>
         <h1 className="font-heading text-2xl font-semibold">Create New Agent</h1>
         <p className="text-sm text-muted-foreground">

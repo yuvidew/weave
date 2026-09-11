@@ -18,3 +18,9 @@ export const editAgent = async ({ agentId, agentConfig }: { agentId: string; age
 
   return data
 }
+
+export const allAgents = async () => {
+  const { data } = await axios.get<CreatAgentType[]>("/api/agent/configure")
+
+  return data
+}
