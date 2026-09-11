@@ -1,6 +1,6 @@
 import { AgentConfig, chatMessages, db } from "@/db";
 import { buildAgentChatSystemPrompt } from "@/constant/prompts";
-import { AgentActionDef, findActionByName, getActionsForSlugs } from "@/constant/agent-actions";
+import { AgentActionDef, PipedreamAgentAction, findActionByName, getActionsForSlugs } from "@/constant/agent-actions";
 import type { ConnectedTool } from "@/lib/agent-tools";
 import { GROQ_MODEL, generateWithRetry, groq } from "@/lib/groq";
 import { pipedream } from "@/lib/pipedream";
@@ -68,7 +68,7 @@ const toGroqTool = (action: AgentActionDef): ChatCompletionTool => ({
 
 // Executes one curated action for real via Pipedream against the agent's
 // connected account for that action's app.
-const runAction = (action: AgentActionDef, args: Record<string, unknown>, agentId: string, connectedAccountId: string) =>
+const runAction = (action: PipedreamAgentAction, args: Record<string, unknown>, agentId: string, connectedAccountId: string) =>
     pipedream.actions.run({
         id: action.componentId,
         externalUserId: agentId,
@@ -166,6 +166,25 @@ export const runChatTurn = async (
                     id: toolCall.id, name: action.name, arguments: args,
                     label: action.toApprovalLabel(args), needsApproval: true, status: "pending",
                 })
+                continue
+            }
+
+            // Direct (non-Pipedream) action — runs immediately, no
+            // connected account required (see constant/direct-auth-tools.ts).
+            if (action.run) {
+                try {
+                    const result = await action.run(args)
+                    resolvedCalls.push({
+                        id: toolCall.id, name: action.name, arguments: args,
+                        label: action.toApprovalLabel(args), needsApproval: false, status: "done", result,
+                    })
+                } catch (error) {
+                    resolvedCalls.push({
+                        id: toolCall.id, name: action.name, arguments: args,
+                        label: action.toApprovalLabel(args), needsApproval: false, status: "error",
+                        error: error instanceof Error ? error.message : "Action failed.",
+                    })
+                }
                 continue
             }
 

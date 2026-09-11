@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/input-group"
 import { AlertCircleIcon, ArrowUpIcon, PaperclipIcon, SparklesIcon } from "lucide-react"
 import { ChatMarkdown } from "./chat-markdown"
-import { useChatMessages, useResolveToolCall, useSendChatMessage } from "../hook/use-chat"
+import { useChatMessages, usePendingChatMessage, useResolveToolCall, useSendChatMessage } from "../hook/use-chat"
 import type { ChatMessageRow, ChatToolCall, CreatAgentType } from "../types"
 
 interface ChatSheetProps {
@@ -156,16 +156,22 @@ export const ChatSheet = ({ children, agent, open: openProp, onOpenChange }: Cha
     // useAgentTools(agent.agentId, open) in AgentEditSheet.
     const { data: history, isFetching, isError, refetch } = useChatMessages(agent.agentId, open)
     const sendChatMessage = useSendChatMessage()
+    // Reflects an in-flight send for THIS agent even if this ChatSheet
+    // instance remounted after the request was kicked off (see
+    // usePendingChatMessage) — a plain sendChatMessage.isPending would reset
+    // to false on remount despite the request still running server-side.
+    const pendingMessage = usePendingChatMessage(agent.agentId)
+    const isSending = pendingMessage !== null
 
     // Real history is empty and nothing is in flight yet — show the empty
     // state instead of a blank scroller.
-    const hasStarted = (history?.length ?? 0) > 0 || sendChatMessage.isPending
+    const hasStarted = (history?.length ?? 0) > 0 || isSending
     // True only for the very first load (no cached data yet) — `isFetching`
     // also flips on for the quiet background refetch after sending a
     // message/resolving a tool call, which shouldn't trigger this full-pane
     // loading state since the optimistic bubbles already cover that.
     const isInitialLoading = isFetching && history === undefined
-    const isComposerDisabled = sendChatMessage.isPending || isInitialLoading || isError
+    const isComposerDisabled = isSending || isInitialLoading || isError
 
     const onSend = () => {
         const content = draft.trim()
@@ -239,19 +245,21 @@ export const ChatSheet = ({ children, agent, open: openProp, onOpenChange }: Cha
                                         ))}
 
                                         {/* Optimistic: render the just-sent text immediately from the
-                                            mutation's own variables (not the query cache) — it
-                                            disappears the moment the real history refetch lands it
-                                            for real, replaced by a persisted row with a real id. */}
-                                        {sendChatMessage.isPending && sendChatMessage.variables && (
+                                            shared mutation cache (not the query cache, and not this
+                                            component's own mutation instance — see
+                                            usePendingChatMessage) — it disappears the moment the real
+                                            history refetch lands it for real, replaced by a persisted
+                                            row with a real id. */}
+                                        {pendingMessage && (
                                             <Message align="end">
                                                 <MessageContent>
                                                     <Bubble variant="default">
-                                                        <BubbleContent>{sendChatMessage.variables.message}</BubbleContent>
+                                                        <BubbleContent>{pendingMessage.message}</BubbleContent>
                                                     </Bubble>
                                                 </MessageContent>
                                             </Message>
                                         )}
-                                        {sendChatMessage.isPending && (
+                                        {isSending && (
                                             <Message align="start">
                                                 <MessageAvatar>
                                                     <Avatar className="size-8">
@@ -302,7 +310,7 @@ export const ChatSheet = ({ children, agent, open: openProp, onOpenChange }: Cha
                                 variant={"default"}
                                 className="rounded-full"
                             >
-                                {sendChatMessage.isPending ? <Spinner className="size-4" /> : <ArrowUpIcon />}
+                                {isSending ? <Spinner className="size-4" /> : <ArrowUpIcon />}
                                 <span className="sr-only">Send message</span>
                             </InputGroupButton>
                         </InputGroupAddon>

@@ -1,4 +1,6 @@
 import { pipedream } from "@/lib/pipedream";
+import { runBrowserResearch } from "@/lib/browserbase-tool";
+import { runWebSearch } from "@/lib/serpapi-tool";
 
 // Curated, hand-picked catalog of actions an agent can call during chat,
 // each mapped to one specific, verified Pipedream action component with
@@ -21,7 +23,8 @@ export type AgentConfigLike = {
 
 // One action Groq can choose to call. `name` doubles as the OpenAI/Groq
 // function name, so it must be a valid identifier (no spaces/dashes).
-export type AgentActionDef = {
+// Fields common to both execution styles below.
+type AgentActionBase = {
     name: string
     description: string
     // JSON Schema for ChatCompletionTool.function.parameters — what the
@@ -32,11 +35,6 @@ export type AgentActionDef = {
     // Catalog slug (e.g. "gmail") this action requires connected — gates
     // which actions are even offered to Groq for a given agent.
     catalogSlug: string
-    // Verified Pipedream action component id (see module comment above).
-    componentId: string
-    // Name of this component's "app"-type configurable prop — the caller
-    // sets `configuredProps[appPropName] = { authProvisionId: connectedAccountId }`.
-    appPropName: string
     // When true, this action pauses for the user's approval before running
     // (see app/api/agent/chat/_lib.ts / resolve/route.ts) instead of running
     // immediately. Every action below currently sets this to false — the
@@ -44,11 +42,21 @@ export type AgentActionDef = {
     // resolve route) so it can be turned back on per-action later, but
     // nothing in the app requests it right now.
     needsApproval: boolean
+    // Human-readable summary shown on the approval card / as a status line.
+    toApprovalLabel: (args: Record<string, any>) => string
+}
+
+// Executed via pipedream.actions.run — every action needs a connected
+// Pipedream account for its `catalogSlug` (see lib/agent-tools.ts).
+export type PipedreamAgentAction = AgentActionBase & {
+    // Verified Pipedream action component id (see module comment above).
+    componentId: string
+    // Name of this component's "app"-type configurable prop — the caller
+    // sets `configuredProps[appPropName] = { authProvisionId: connectedAccountId }`.
+    appPropName: string
     // Turns the model's parsed JSON arguments into this component's
     // configuredProps (minus the app prop, added separately by the caller).
     toConfiguredProps: (args: Record<string, any>) => Record<string, unknown>
-    // Human-readable summary shown on the approval card / as a status line.
-    toApprovalLabel: (args: Record<string, any>) => string
     // Optional: fills in args the model left out but that it should never
     // have to ask the user for (e.g. a Notion parent page — the model has no
     // way to know a real page UUID on its own). Called before
@@ -65,7 +73,22 @@ export type AgentActionDef = {
             persistDefault: (values: Record<string, unknown>) => Promise<void>
         }
     ) => Promise<Record<string, unknown>>
+    run?: undefined
 }
+
+// Executed directly (no Pipedream involved) — for tools whose auth is a
+// single shared server-side credential rather than a per-agent OAuth
+// connection (see constant/direct-auth-tools.ts). `runChatTurn` calls `run`
+// straight away, skipping the "connected account" requirement entirely.
+type DirectAgentAction = AgentActionBase & {
+    run: (args: Record<string, any>) => Promise<unknown>
+    componentId?: undefined
+    appPropName?: undefined
+    toConfiguredProps?: undefined
+    resolveMissingArgs?: undefined
+}
+
+export type AgentActionDef = PipedreamAgentAction | DirectAgentAction
 
 export const AGENT_ACTIONS: AgentActionDef[] = [
     {
@@ -240,13 +263,71 @@ export const AGENT_ACTIONS: AgentActionDef[] = [
         }),
         toApprovalLabel: () => "List upcoming calendar events",
     },
+    {
+        name: "browser_research",
+        description:
+            "Use this when the user asks you to browse or search the live internet, compare current prices, check current availability, or verify up-to-date information on a specific site you can't answer from your own knowledge. Runs a real, sandboxed browser session and can take up to a few minutes. Treat this strictly as read-only research — never use it to submit forms, log in, or make purchases.",
+        parameters: {
+            type: "object",
+            properties: {
+                task: {
+                    type: "string",
+                    description:
+                        "A complete, self-contained instruction describing exactly what to find or verify on the live web, including the specific site/product/query — the browser agent has no other context.",
+                },
+            },
+            required: ["task"],
+        },
+        catalogSlug: "browserbase",
+        // Framed and prompted as read-only research — a blanket approval
+        // gate would defeat the "quick price/availability check" use case.
+        // Known simplification: the seeded `tools` catalog row's
+        // `approvalRules` implies per-behavior approval (e.g. gate checkout
+        // but not navigation), which this single static boolean can't
+        // express for one opaque Browserbase run — real parity would need
+        // `needsApproval` to become a function of the task text, or
+        // constraints on the underlying Browserbase Agent itself.
+        needsApproval: false,
+        run: (args) => runBrowserResearch(args),
+        toApprovalLabel: (args) => `Browser research: ${String(args.task ?? "").slice(0, 120)}`,
+    },
+    {
+        name: "web_search",
+        // Complements browser_research: this is a fast, structured Google
+        // search via SerpAPI — no page navigation, just search results.
+        // Prefer this for a quick lookup; reach for browser_research when
+        // the task needs to actually visit/verify a specific page.
+        description:
+            "Search the web for current information, facts, or links using Google search results. Fast and read-only — prefer this over browser_research for a quick lookup that doesn't require visiting/verifying a specific page.",
+        parameters: {
+            type: "object",
+            properties: {
+                query: { type: "string", description: "The search query." },
+                numResults: { type: "integer", description: "How many results to return (default 5, max 10)." },
+            },
+            required: ["query"],
+        },
+        catalogSlug: "google_search",
+        needsApproval: false,
+        run: (args) => runWebSearch(args),
+        toApprovalLabel: (args) => `Web search: ${String(args.query ?? "")}`,
+    },
 ]
+
+// "serpapi" and "google_search" are two separate seeded `tools` catalog
+// slugs (db/seed.ts) for the same underlying search capability — an
+// agent-config LLM might pick either one. Rather than duplicating the
+// web_search action under two catalogSlug values, normalize "serpapi" to
+// "google_search" here so either slug unlocks it.
+const CATALOG_SLUG_ALIASES: Record<string, string> = { serpapi: "google_search" }
 
 // Builds the set of actions available this turn from an agent's *connected*
 // catalog slugs (not just its configured `tools` list — see
 // lib/agent-tools.ts's getConnectedTools).
-export const getActionsForSlugs = (slugs: string[]): AgentActionDef[] =>
-    AGENT_ACTIONS.filter((action) => slugs.includes(action.catalogSlug))
+export const getActionsForSlugs = (slugs: string[]): AgentActionDef[] => {
+    const normalizedSlugs = new Set(slugs.map((slug) => CATALOG_SLUG_ALIASES[slug] ?? slug))
+    return AGENT_ACTIONS.filter((action) => normalizedSlugs.has(action.catalogSlug))
+}
 
 // Looks up an action by the Groq function name a tool_call resolved to.
 export const findActionByName = (name: string): AgentActionDef | undefined =>

@@ -1,5 +1,6 @@
 import { AgentConfig, db } from "@/db";
 import { getConnectedTools } from "@/lib/agent-tools";
+import { DIRECT_AUTH_TOOL_DISPLAY, isDirectAuthTool } from "@/constant/direct-auth-tools";
 import { pipedream, resolvePipedreamAppSlug } from "@/lib/pipedream";
 import { currentUser } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
@@ -62,20 +63,30 @@ export const GET = async (req: NextRequest) => {
         // the only source for those fields pre-connection. Resolved through
         // the catalog-slug → Pipedream-app-slug map, since a couple of
         // catalog tools (e.g. "google_search") don't have their own app.
+        // Direct-auth tools (e.g. "browserbase") have no matching Pipedream
+        // app at all — skip the doomed lookup and use static display info.
         const apps = await Promise.all(
-            allowedTools.map((slug) => pipedream.apps.retrieve(resolvePipedreamAppSlug(slug)).catch(() => null))
+            allowedTools.map((slug) =>
+                isDirectAuthTool(slug)
+                    ? Promise.resolve(null)
+                    : pipedream.apps.retrieve(resolvePipedreamAppSlug(slug)).catch(() => null)
+            )
         )
 
         const tools = allowedTools.map((slug: string, index: number) => {
+            const direct = DIRECT_AUTH_TOOL_DISPLAY[slug]
             const app = apps[index]?.data
             const connectedTool = connectedTools.find((tool) => tool.slug === slug)
 
             return {
                 slug,
-                name: app?.name ?? slug,
-                logo: app?.imgSrc ?? "",
+                name: direct?.name ?? app?.name ?? slug,
+                logo: direct?.logo ?? app?.imgSrc ?? "",
                 connected: Boolean(connectedTool),
-                connectedAccountId: connectedTool?.connectedAccountId ?? null,
+                // The "direct" sentinel connectedAccountId (see
+                // getConnectedTools) is an internal detail, not a real
+                // Pipedream account — never surface it to the client.
+                connectedAccountId: isDirectAuthTool(slug) ? null : (connectedTool?.connectedAccountId ?? null),
             }
         })
 

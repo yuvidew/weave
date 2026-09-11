@@ -6,6 +6,21 @@ import { and, asc, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { runChatTurn } from "./_lib";
 
+// A tool call can run a real Browserbase browser session (see
+// constant/agent-actions.ts's browser_research), which polls for up to a
+// few minutes — raise the default serverless function timeout so a real run
+// isn't killed mid-poll (no effect under `next dev`).
+export const maxDuration = 300
+
+// Backstop against a duplicate concurrent send landing two copies of the
+// same question: the client already locks its composer for the duration of
+// a send (see usePendingChatMessage in features/agents/hook/use-chat.ts),
+// but this guards the same thing server-side in case that ever gets
+// bypassed (a stale tab, a manual API call). Per-process only — fine for a
+// single dev/small deployment, not a guarantee across multiple server
+// instances, but it's a backstop, not the primary fix.
+const agentIdsCurrentlySending = new Set<string>()
+
 // Loads the signed-in user's own agent row by agentId, or null if it
 // doesn't exist / belongs to someone else — scoping agentId+userEmail
 // together in one WHERE (rather than fetching then checking ownership)
@@ -63,6 +78,14 @@ export const POST = async (req: NextRequest) => {
         return NextResponse.json({ error: "Agent not found" }, { status: 404 })
     }
 
+    if (agentIdsCurrentlySending.has(agentId)) {
+        return NextResponse.json(
+            { error: "A response is still being generated for this agent — please wait for it to finish." },
+            { status: 409 }
+        )
+    }
+    agentIdsCurrentlySending.add(agentId)
+
     try {
         await db.insert(chatMessages).values({
             agentId, userEmail, role: "user", content: message.trim(),
@@ -90,5 +113,7 @@ export const POST = async (req: NextRequest) => {
             },
             { status: overloaded ? 503 : 500 }
         )
+    } finally {
+        agentIdsCurrentlySending.delete(agentId)
     }
 }

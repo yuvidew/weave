@@ -20,9 +20,12 @@ export const pipedream = new PipedreamClient({
 // "notion"). Note: two catalog tools resolving to the same Pipedream app
 // share one underlying connected account — connecting/disconnecting either
 // affects both.
-const CATALOG_SLUG_TO_PIPEDREAM_APP: Record<string, string> = {
-    google_search: "serpapi",
-}
+// (No entries currently — "google_search" used to map to Pipedream's
+// "serpapi" app here, but it's now a direct-auth tool backed by a shared
+// SerpAPI key instead; see constant/direct-auth-tools.ts and
+// lib/serpapi-tool.ts. Every call site checks isDirectAuthTool(slug) before
+// ever reaching resolvePipedreamAppSlug, so this map is dead for that slug.)
+const CATALOG_SLUG_TO_PIPEDREAM_APP: Record<string, string> = {}
 
 // Resolves a catalog tool slug to the Pipedream app slug that actually
 // backs it, per the mapping above.
