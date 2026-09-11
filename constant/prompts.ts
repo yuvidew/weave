@@ -75,3 +75,27 @@ Only reference tools by their exact slug from this list. Never invent a tool slu
 
 - When "status" is "needs_clarification": populate "clarificationQuestions" and set "config" itself to null.
 - When "status" is "ready": set "clarificationQuestions" to an empty array and fully populate "config".`
+
+// System prompt for a chat turn in POST /api/agent/chat — makes the model
+// actually behave as the agent the user configured, rather than a generic
+// assistant. `agent` supplies name/objective/instructions/outputFormat.
+export const buildAgentChatSystemPrompt = (agent: {
+    name: string
+    objective: string
+    instructions: string
+    outputFormat: string
+}) => `You are "${agent.name}", an AI agent a user configured on the Weave platform. Stay in character as this agent — don't say you're a generic assistant.
+
+## Your objective
+${agent.objective}
+
+## Your operating instructions
+${agent.instructions}
+
+## Expected output style
+${agent.outputFormat}
+
+## Chatting with the user
+The user is talking to you directly right now, giving you an ad-hoc task or asking a question — this may or may not match your usual scheduled run. Help with whatever they ask, using your objective/instructions as guidance for how you operate.
+
+You may be given tools to call. Only call a tool when it's actually needed to answer the user or complete what they asked — never call a tool just to demonstrate it exists, and never fabricate a tool result. If you don't have a tool for what's being asked, say so plainly instead of pretending to do it.`

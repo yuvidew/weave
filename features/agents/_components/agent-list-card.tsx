@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { ClockIcon, MoreHorizontalIcon, PauseIcon, PencilIcon, PlayIcon, Trash2Icon, ZapIcon } from "lucide-react"
+import { ClockIcon, MessageCircleIcon, MoreHorizontalIcon, PauseIcon, PencilIcon, PlayIcon, Trash2Icon, ZapIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -16,6 +16,7 @@ import { ItemMedia } from "@/components/ui/item"
 import { Separator } from "@/components/ui/separator"
 import type { AgentSchedule, CreatAgentType } from "../types"
 import { AgentEditSheet } from "./agent-edit-sheet"
+import { ChatSheet } from "./chat-sheet"
 
 // Same emerald/muted chip colors used by NewAgentCard (agent-card.tsx) — Badge
 // has no built-in "success" variant.
@@ -134,13 +135,22 @@ export const AgentListCard = ({ agent, onEdit, onToggleStatus, onRunNow, onDelet
 
       <Separator />
 
-      <Button
-        className="w-full"
-        onClick={() => onRunNow?.(agent)}
-      >
-        <PlayIcon />
-        Run agent
-      </Button>
+      <div className="flex items-center gap-3">
+        <Button
+          className="flex-1"
+          onClick={() => onRunNow?.(agent)}
+        >
+          <PlayIcon />
+          Run agent
+        </Button>
+
+        <ChatSheet agent={agent}>
+          <Button className="flex-1" variant={"outline"}>
+            <MessageCircleIcon />
+            Chat with Agent
+          </Button>
+        </ChatSheet>
+      </div>
 
       <AgentEditSheet agent={agent} onUpdated={onEdit} open={editOpen} onOpenChange={setEditOpen} />
     </div>
