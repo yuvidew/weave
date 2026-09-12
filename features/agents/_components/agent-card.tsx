@@ -39,9 +39,10 @@ const STATUS_BADGE: Record<CreatAgentType["status"], { label: string; className:
 }
 
 // Builds the "Next run today at 9:00 AM · Runs daily" line from a schedule,
-// or null when there's nothing to show (a manual schedule, or no time set).
-const formatNextRun = (schedule: AgentSchedule): string | null => {
-  if (schedule.type === "manual" || !schedule.time) return null
+// or null when there's nothing to show (a manual schedule, no time set, or no
+// schedule at all — older rows saved before a schedule was required).
+const formatNextRun = (schedule: AgentSchedule | null | undefined): string | null => {
+  if (!schedule || schedule.type === "manual" || !schedule.time) return null
 
   const [hours, minutes] = schedule.time.split(":").map(Number)
   const scheduledToday = new Date()

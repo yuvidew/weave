@@ -264,6 +264,30 @@ export const AGENT_ACTIONS: AgentActionDef[] = [
         toApprovalLabel: () => "List upcoming calendar events",
     },
     {
+        name: "slack_send_message",
+        description: "Send a message to a Slack channel, user, or group via the connected Slack workspace.",
+        parameters: {
+            type: "object",
+            properties: {
+                channel: {
+                    type: "string",
+                    description: "Channel name (e.g. \"#general\" or \"general\"), channel ID, user ID, or group ID to post the message to — channel names are resolved to IDs automatically.",
+                },
+                text: { type: "string", description: "The message text to post. Supports Slack mrkdwn formatting (e.g. \"*bold*\", \"_italic_\")." },
+            },
+            required: ["channel", "text"],
+        },
+        catalogSlug: "slack_v2",
+        componentId: "slack_v2-post-message",
+        appPropName: "slack",
+        needsApproval: false,
+        toConfiguredProps: (args) => ({
+            channel: args.channel,
+            text: args.text,
+        }),
+        toApprovalLabel: (args) => `Post to Slack ${args.channel}: ${String(args.text ?? "").slice(0, 80)}`,
+    },
+    {
         name: "browser_research",
         description:
             "Use this when the user asks you to browse or search the live internet, compare current prices, check current availability, or verify up-to-date information on a specific site you can't answer from your own knowledge. Runs a real, sandboxed browser session and can take up to a few minutes. Treat this strictly as read-only research — never use it to submit forms, log in, or make purchases.",
@@ -298,7 +322,7 @@ export const AGENT_ACTIONS: AgentActionDef[] = [
         // Prefer this for a quick lookup; reach for browser_research when
         // the task needs to actually visit/verify a specific page.
         description:
-            "Search the web for current information, facts, or links using Google search results. Fast and read-only — prefer this over browser_research for a quick lookup that doesn't require visiting/verifying a specific page.",
+            "Search the web for current information, facts, or links using Google search results. Fast and read-only — prefer this over browser_research for a quick lookup that doesn't require visiting/verifying a specific page. Don't repeat a similar search if an earlier one in this conversation already returned relevant results — reuse what you already have instead of searching again. Returns only titles/links/snippets — there is no separate tool to \"open\" or fetch a result's full page; work from the snippet text, or call browser_research if you genuinely need a specific page's full content.",
         parameters: {
             type: "object",
             properties: {
