@@ -116,14 +116,21 @@ export const runChatTurn = async (
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
         // On the last allowed iteration, force a plain reply so the loop
         // always terminates in text even if the model still wants to call
-        // more tools.
+        // more tools. Omitting `tools` entirely (rather than sending them
+        // with `tool_choice: "none"`) is what actually makes this hold —
+        // a model asked hard enough to use a tool (see the scheduled-run
+        // instruction in lib/execute-agent.ts) can still emit a tool_call
+        // even with tool_choice "none", which Groq then hard-rejects with
+        // a 400 ("Tool choice is none, but model called a tool") instead of
+        // just returning text — so there's nothing to fall back to. With no
+        // tool schemas in the request at all, it has nothing to call.
         const forceStop = iteration === MAX_ITERATIONS - 1
 
         const response = await generateWithRetry(groq, {
             model: GROQ_MODEL,
             messages,
-            tools: actions.length > 0 ? actions.map(toGroqTool) : undefined,
-            tool_choice: actions.length === 0 ? undefined : forceStop ? "none" : "auto",
+            tools: actions.length > 0 && !forceStop ? actions.map(toGroqTool) : undefined,
+            tool_choice: actions.length > 0 && !forceStop ? "auto" : undefined,
         })
 
         const choice = response.choices[0]?.message

@@ -5,9 +5,10 @@ import { AgentConfig, db, tools } from "@/db";
 import { currentUser } from "@clerk/nextjs/server";
 import { and, desc, eq, or } from "drizzle-orm";
 import { GROQ_MODEL, generateWithRetry, groq, isGroqOverloaded } from "@/lib/groq";
+import { normalizeSchedule, rescheduleAgentRuns } from "@/lib/agent-schedule";
 
 export const POST = async (req: NextRequest) => {
-    const { prompt } = await req.json();
+    const { prompt, timezone } = await req.json();
     const user = await currentUser()
 
     if (!prompt?.trim()) {
@@ -44,12 +45,26 @@ export const POST = async (req: NextRequest) => {
 
         if (aiOutput.status === "ready") {
             const agentId = crypto.randomUUID()
+            const schedule = normalizeSchedule(aiOutput?.config?.schedule)
             const [agent] = await db.insert(AgentConfig).values({
                 ...aiOutput.config,
                 agentImage: `https://api.dicebear.com/10.x/voxel-bot/svg?tags=animation&seed=${agentId}`,
                 agentId: agentId,
-                userEmail: user?.primaryEmailAddress?.emailAddress
+                userEmail: user?.primaryEmailAddress?.emailAddress,
+                schedule: {
+                    ...schedule,
+                    timezone: timezone,
+                }
             }).returning();
+
+            // Queues the first run for a daily recurring schedule — see
+            // rescheduleAgentRuns's doc comment for why this same call is
+            // also made from PUT on every schedule edit.
+            await rescheduleAgentRuns({
+                agentId,
+                userEmail: user?.primaryEmailAddress?.emailAddress ?? "",
+                schedule: { ...schedule, timezone },
+            })
 
             // `dbResult` from `.returning()` is an array — spreading it directly
             // (`{...dbResult}`) turns it into `{"0": row}` instead of a clean
@@ -99,6 +114,19 @@ export const PUT = async (req: NextRequest) => {
 
         if (!result[0]) {
             return NextResponse.json({ error: "Agent not found" }, { status: 404 })
+        }
+
+        // The saved schedule (result[0].schedule) is the source of truth —
+        // re-sync the queued run to it whenever schedule was part of this
+        // edit, so a changed time/frequency/type actually takes effect
+        // instead of leaving a stale run queued at the old time.
+        if (agentConfig.schedule) {
+            const savedSchedule = result[0].schedule as { type: string; time: string; frequency: string; timezone?: string }
+            await rescheduleAgentRuns({
+                agentId,
+                userEmail: user?.primaryEmailAddress?.emailAddress ?? "",
+                schedule: savedSchedule,
+            })
         }
 
         return NextResponse.json(result[0])

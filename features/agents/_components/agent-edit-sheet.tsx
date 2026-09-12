@@ -33,6 +33,7 @@ import { Avatar, AvatarImage } from '@/components/ui/avatar';
 import {
     Field,
     FieldDescription,
+    FieldError,
     FieldGroup,
     FieldLabel,
     FieldTitle,
@@ -125,6 +126,10 @@ export const AgentEditSheet = ({ children, agent, onUpdated, open: openProp, onO
     const open = isControlled ? openProp : internalOpen
     const setOpen = isControlled ? (onOpenChange ?? (() => {})) : setInternalOpen
     const [form, setForm] = useState<AgentFormState>(() => buildFormState(agent))
+    // Blocks saving a schedule that's missing the fields it needs to actually
+    // run (a time for "once"/"recurring", a frequency for "recurring") —
+    // cleared on every attempt and re-set only when validation fails.
+    const [scheduleError, setScheduleError] = useState<string | null>(null)
     const { mutate: saveAgent, isPending, error } = useEditAgent()
     // Only fetches (and only triggers the server-side Pipedream lookup)
     // while the sheet is actually open. This is the real source of truth for
@@ -134,12 +139,29 @@ export const AgentEditSheet = ({ children, agent, onUpdated, open: openProp, onO
     const disconnectTool = useDisconnectTool()
 
     // Restores every field to the agent's original values.
-    const resetForm = () => setForm(buildFormState(agent))
+    const resetForm = () => {
+        setForm(buildFormState(agent))
+        setScheduleError(null)
+    }
 
     // Sends the current form back to the API, scoped to this agent's id.
     // Only closes/resets on success — on failure the sheet stays open with
     // the entered values so the user can retry without retyping anything.
     const onSave = () => {
+        // "manual" has nothing to validate — it never runs on a schedule.
+        // "once"/"recurring" need a time to fire at, and "recurring" also
+        // needs to know how often, so catch a blank input before it's
+        // silently persisted as an unusable empty string.
+        if (form.schedule.type !== "manual" && !form.schedule.time) {
+            setScheduleError("Pick a time for this schedule.")
+            return
+        }
+        if (form.schedule.type === "recurring" && !form.schedule.frequency) {
+            setScheduleError("Pick how often this should run.")
+            return
+        }
+        setScheduleError(null)
+
         saveAgent(
             {
                 agentId: agent.agentId,
@@ -176,6 +198,8 @@ export const AgentEditSheet = ({ children, agent, onUpdated, open: openProp, onO
     }
 
     const connectedCount = fetchedTools?.filter((tool) => tool.connected).length ?? 0
+
+    console.log("agent data", agent)
 
     return (
         <Sheet
@@ -259,6 +283,7 @@ export const AgentEditSheet = ({ children, agent, onUpdated, open: openProp, onO
                         <div className="rounded-lg border p-4 flex flex-col space-y-1">
                             <FieldTitle>Schedule</FieldTitle>
                             <FieldDescription>Choose when and how often this agent runs.</FieldDescription>
+                            <FieldError>{scheduleError}</FieldError>
                             <div className="mt-3 grid grid-cols-2 gap-3">
                                 <Field>
                                     <FieldLabel htmlFor="schedule-type">Run type</FieldLabel>
@@ -286,7 +311,7 @@ export const AgentEditSheet = ({ children, agent, onUpdated, open: openProp, onO
                                     <Input
                                         id="schedule-time"
                                         type="time"
-                                        value={form.schedule.time}
+                                        value={form.schedule.time ?? ""}
                                         onChange={(e) =>
                                             setForm((prev) => ({
                                                 ...prev,
@@ -299,7 +324,7 @@ export const AgentEditSheet = ({ children, agent, onUpdated, open: openProp, onO
                             <Field className="mt-3">
                                 <FieldLabel htmlFor="schedule-frequency">Frequency</FieldLabel>
                                 <Select
-                                    value={form.schedule.frequency}
+                                    value={form.schedule.frequency ?? ""}
                                     disabled={form.schedule.type === "manual"}
                                     onValueChange={(value) =>
                                         setForm((prev) => ({

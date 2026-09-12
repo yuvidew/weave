@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, uuid, varchar, boolean, PgJsonb, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, uuid, varchar, boolean, PgJsonb, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
 
 // Number of agents a user can create on the free plan. Matches
 // `users.agentCredits`'s default below, which tracks credits *remaining*
@@ -58,7 +58,7 @@ export const AgentConfig = pgTable("agentConfig", {
   userEmail: text("email").references(() => users.email),
   agentId: varchar("agentId").notNull().unique(),
   name: varchar("name"),
-  agentImage:varchar("agentImage"),
+  agentImage: varchar("agentImage"),
   description: text("description"),
   instructions: text("instructions"),
   objective: text("objective"),
@@ -93,6 +93,65 @@ export const chatMessages = pgTable("chatMessages", {
   toolCalls: jsonb("toolCalls"), // set on role="assistant" rows that requested calls
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const AgentRun = pgTable(
+  "agentRun",
+  {
+    id: uuid("id")
+      .defaultRandom()
+      .primaryKey(),
+
+    agentId: varchar("agentId")
+      .notNull()
+      .references(() => AgentConfig.agentId),
+
+    userEmail: text("email").notNull(),
+
+    scheduledFor: timestamp("scheduled_for", {
+      withTimezone: true,
+    }).notNull(),
+
+    timezone: varchar("timezone", {
+      length: 100,
+    }).notNull(),
+
+    status: varchar("status")
+      .default("scheduled")
+      .notNull(),
+
+    output: jsonb("output"),
+    error: text("error"),
+
+    queuedAt: timestamp("queued_at", {
+      withTimezone: true,
+    }),
+
+    startedAt: timestamp("started_at", {
+      withTimezone: true,
+    }),
+
+    completedAt: timestamp("completed_at", {
+      withTimezone: true,
+    }),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  table => [
+    uniqueIndex("unique_agent_occurrence").on(
+      table.agentId,
+      table.scheduledFor,
+    ),
+
+    index("agent_run_schedule_lookup").on(
+      table.status,
+      table.scheduledFor,
+    ),
+  ],
+);
 
 // Row shape returned by SELECTs against `users`.
 export type User = typeof users.$inferSelect;

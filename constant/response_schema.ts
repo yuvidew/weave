@@ -100,16 +100,16 @@ export const agent_config_response = {
                 type: "string",
                 enum: ["manual", "once", "recurring"],
                 description:
-                  "\"manual\" when the user never mentions timing, \"once\" for a single run, \"recurring\" for anything repeating.",
+                  "\"recurring\" is the default when timing is unspecified or repeating. \"once\" only for a single described run. \"manual\" only when the user explicitly says they'll trigger it themselves / no automatic schedule.",
               },
               frequency: {
-                type: ["string", "null"],
-                enum: ["daily", "weekly", "monthly", null],
-                description: "Only set when schedule.type is \"recurring\"; null otherwise.",
+                type: "string",
+                enum: ["daily", "weekly", "monthly"],
+                description: "Always a real value, never null — the frequency the user stated, or \"daily\" as the default when schedule.type isn't \"recurring\" or none was mentioned.",
               },
               time: {
-                type: ["string", "null"],
-                description: "24-hour \"HH:mm\" string. Null when schedule.type is \"manual\".",
+                type: "string",
+                description: "24-hour \"HH:mm\" string. Always a real value, never null — the time the user stated, or \"09:00\" as the default when none was mentioned.",
               },
             },
             required: ["type", "frequency", "time"],

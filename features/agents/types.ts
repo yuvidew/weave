@@ -16,9 +16,9 @@ export type ScheduleType = "manual" | "once" | "recurring"
 export type ScheduleFrequency = "daily" | "weekly" | "monthly" | "hourly"
 
 export type AgentSchedule = {
-  time: string;
+  time: string | null;
   type: ScheduleType;
-  frequency: ScheduleFrequency;
+  frequency: ScheduleFrequency | null;
   date?: string;
   timezone?: string
   dayOfWeak?: string[]

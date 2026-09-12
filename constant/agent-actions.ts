@@ -264,6 +264,30 @@ export const AGENT_ACTIONS: AgentActionDef[] = [
         toApprovalLabel: () => "List upcoming calendar events",
     },
     {
+        name: "slack_send_message",
+        description: "Send a message to a Slack channel, user, or group via the connected Slack workspace.",
+        parameters: {
+            type: "object",
+            properties: {
+                channel: {
+                    type: "string",
+                    description: "Channel name (e.g. \"#general\" or \"general\"), channel ID, user ID, or group ID to post the message to — channel names are resolved to IDs automatically.",
+                },
+                text: { type: "string", description: "The message text to post. Supports Slack mrkdwn formatting (e.g. \"*bold*\", \"_italic_\")." },
+            },
+            required: ["channel", "text"],
+        },
+        catalogSlug: "slack_v2",
+        componentId: "slack_v2-post-message",
+        appPropName: "slack",
+        needsApproval: false,
+        toConfiguredProps: (args) => ({
+            channel: args.channel,
+            text: args.text,
+        }),
+        toApprovalLabel: (args) => `Post to Slack ${args.channel}: ${String(args.text ?? "").slice(0, 80)}`,
+    },
+    {
         name: "browser_research",
         description:
             "Use this when the user asks you to browse or search the live internet, compare current prices, check current availability, or verify up-to-date information on a specific site you can't answer from your own knowledge. Runs a real, sandboxed browser session and can take up to a few minutes. Treat this strictly as read-only research — never use it to submit forms, log in, or make purchases.",

@@ -40,11 +40,10 @@ Only reference tools by their exact slug from this list. Never invent a tool slu
 - "instructions": step-by-step operating instructions the agent should follow each run, written in the order it should execute them. Be specific about sources, filters, and destinations mentioned in the request.
 - "tools": array of tool slugs, drawn only from Available Tools, limited to what's strictly necessary.
 - "skills": array of short capability tags describing what the agent does (e.g. "web_research", "email_summarization") — not tool names.
-- "schedule": {
-    "type": "manual" | "once" | "recurring" — "manual" when the user never mentions timing, "once" for a single run, "recurring" for anything repeating.
-    "frequency": "daily" | "weekly" | "monthly" | null — null unless "type" is "recurring".
-    "time": "HH:mm" 24-hour string, or null when "type" is "manual".
-  }
+- "schedule": every agent gets a real, runnable schedule — "frequency" and "time" are NEVER null, regardless of "type". There is no case where either is left empty.
+    "type": "recurring" | "once" | "manual" — "recurring" is the default whenever timing is unspecified or repeating language is used ("every day", "keep checking", etc). Use "once" only when the user describes a single specific run (a date/time, "tomorrow", "in an hour"). Use "manual" only when the user explicitly says they'll trigger it themselves / no automatic schedule (e.g. "on demand", "only when I ask", "don't run this automatically").
+    "frequency": "daily" | "weekly" | "monthly" — the frequency the user stated, or "daily" as the default in every other case (including "once" and "manual").
+    "time": "HH:mm" 24-hour string — the time the user stated, or "09:00" as the default in every other case (including "manual").
 - "outputFormat": a short description of how results should be delivered/structured (e.g. "Bullet summary posted to Slack with a linked Google Doc").
 - Never fabricate a capability a tool doesn't have — only rely on what's implied by the tool's slug and the user's request.
 
