@@ -134,7 +134,11 @@ export const CreateAgent = ({ onViewAll }: { onViewAll?: () => void }) => {
       )}
 
       {configResult?.status === "ready" && configResult.agent && (
-        <NewAgentCard agent={configResult.agent} />
+        // `key` forces a fresh instance per created agent — without it,
+        // creating a second agent in the same session (without navigating
+        // away) would reuse this component and its auto-connect-once guard,
+        // silently skipping the new agent's auto-connect.
+        <NewAgentCard key={configResult.agent.agentId} agent={configResult.agent} isNewlyCreated />
       )}
       {isPending ? (
         <div className="flex items-center gap-2 rounded-xl border p-4 text-sm text-muted-foreground">

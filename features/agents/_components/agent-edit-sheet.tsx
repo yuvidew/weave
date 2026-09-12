@@ -11,14 +11,8 @@ import {
     SheetTrigger,
 } from "@/components/ui/sheet"
 import {
-    CalendarIcon,
     Loader2Icon,
-    LinkIcon,
-    MailIcon,
-    MessageSquareIcon,
-    NotebookIcon,
     PlusIcon,
-    SearchIcon,
     ShuffleIcon,
     WavesIcon,
     XIcon,
@@ -45,9 +39,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { Item, ItemActions, ItemContent, ItemMedia, ItemTitle } from '@/components/ui/item';
 import { useConnectTool, useDisconnectTool, useEditAgent, useAgentTools } from '../hook/use-agent';
-import { isDirectAuthTool } from '@/constant/direct-auth-tools';
+import { AgentToolRow } from './agent-tool-row';
 import type { AgentFormState, CreatAgentType, ScheduleFrequency, ScheduleType } from "../types"
 
 interface AgentEditSheetProps {
@@ -91,19 +84,6 @@ const buildFormState = (agent: CreatAgentType): AgentFormState => ({
     skills: agent.skills ?? [],
     newSkill: "",
 })
-
-// Known tool slugs mapped to a display label and icon — falls back to a
-// generic link icon/capitalized slug for anything not in this list.
-const TOOL_DISPLAY: Record<string, { label: string; icon: typeof MailIcon }> = {
-    gmail: { label: "Gmail", icon: MailIcon },
-    slack: { label: "Slack", icon: MessageSquareIcon },
-    notion: { label: "Notion", icon: NotebookIcon },
-    google_calendar: { label: "Google Calendar", icon: CalendarIcon },
-    google_search: { label: "Google Search", icon: SearchIcon },
-    serp_search: { label: "SERP Search", icon: SearchIcon },
-    serpapi: { label: "SERP Search", icon: SearchIcon },
-    browserbase: { label: "Browserbase", icon: LinkIcon },
-}
 
 // Builds a fresh dicebear "voxel-bot" avatar URL from a random seed — mirrors
 // the convention used server-side when an agent is first created (see
@@ -405,58 +385,16 @@ export const AgentEditSheet = ({ children, agent, onUpdated, open: openProp, onO
                                     toolsLoading ? "blur-[2px] opacity-70 pointer-events-none" : ""
                                 }`}
                             >
-                                {(agent.tools ?? []).map((slug) => {
-                                    const display = TOOL_DISPLAY[slug]
-                                    const Icon = display?.icon ?? LinkIcon
-                                    // Real name/logo/connected state from Pipedream once loaded —
-                                    // falls back to the static label/icon map, disconnected, while
-                                    // loading or if a slug isn't found.
-                                    const fetchedTool = fetchedTools?.find((tool) => tool.slug === slug)
-                                    const isConnected = fetchedTool?.connected ?? false
-                                    // One mutation instance is shared across every row — only
-                                    // disable/spin the row whose slug is the one actually in flight.
-                                    const isConnecting = connectTool.isPending && connectTool.variables?.slug === slug
-                                    const isDisconnecting = disconnectTool.isPending && disconnectTool.variables?.slug === slug
-                                    return (
-                                        <Item key={slug} variant="outline">
-                                            <ItemMedia variant="icon">
-                                                {fetchedTool?.logo ? (
-                                                    <img src={fetchedTool.logo} alt="" className="size-6" />
-                                                ) : (
-                                                    <Icon />
-                                                )}
-                                            </ItemMedia>
-                                            <ItemContent>
-                                                <ItemTitle>{fetchedTool?.name ?? display?.label ?? slug}</ItemTitle>
-                                                <span className={isConnected ? "text-xs text-emerald-600 dark:text-emerald-400" : "text-xs text-muted-foreground"}>
-                                                    {isConnected ? "Connected" : "Disconnected"}
-                                                </span>
-                                            </ItemContent>
-                                            <ItemActions>
-                                                {isDirectAuthTool(slug) ? (
-                                                    // Shared server-side credential, not a per-agent OAuth
-                                                    // grant — nothing to connect/disconnect here.
-                                                    <Badge variant="secondary">Available</Badge>
-                                                ) : (
-                                                    <Button
-                                                        type="button"
-                                                        variant="success"
-                                                        size="sm"
-                                                        disabled={isConnecting || isDisconnecting}
-                                                        onClick={() =>
-                                                            isConnected
-                                                                ? disconnectTool.mutate({ agentId: agent.agentId, slug })
-                                                                : connectTool.mutate({ agentId: agent.agentId, slug })
-                                                        }
-                                                    >
-                                                        {(isConnecting || isDisconnecting) && <Loader2Icon className="animate-spin" />}
-                                                        {isConnected ? "Disconnect" : "Connect"}
-                                                    </Button>
-                                                )}
-                                            </ItemActions>
-                                        </Item>
-                                    )
-                                })}
+                                {(agent.tools ?? []).map((slug) => (
+                                    <AgentToolRow
+                                        key={slug}
+                                        slug={slug}
+                                        agentId={agent.agentId}
+                                        fetchedTool={fetchedTools?.find((tool) => tool.slug === slug)}
+                                        connectTool={connectTool}
+                                        disconnectTool={disconnectTool}
+                                    />
+                                ))}
                             </div>
                         </div>
 
