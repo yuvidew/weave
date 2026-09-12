@@ -4,7 +4,7 @@ import { agent_config_response } from "@/constant/response_schema";
 import { AgentConfig, db, tools } from "@/db";
 import { currentUser } from "@clerk/nextjs/server";
 import { and, desc, eq, or } from "drizzle-orm";
-import { GROQ_MODEL, generateWithRetry, groq, isGroqOverloaded } from "@/lib/groq";
+import { GROQ_MODEL, generateWithRetry, getGroqRetryAfterMinutes, groq, isGroqOverloaded, isGroqRateLimited } from "@/lib/groq";
 import { normalizeSchedule, rescheduleAgentRuns } from "@/lib/agent-schedule";
 
 export const POST = async (req: NextRequest) => {
@@ -77,15 +77,19 @@ export const POST = async (req: NextRequest) => {
         console.log("Error", error)
 
         const isOverloaded = isGroqOverloaded(error)
+        const isRateLimited = isGroqRateLimited(error)
+        const retryMinutes = getGroqRetryAfterMinutes(error)
 
         return NextResponse.json(
             {
-                error: isOverloaded
+                error: isRateLimited
+                    ? `The AI model has hit its usage limit for now. Please try again${retryMinutes ? ` in about ${retryMinutes} minute${retryMinutes === 1 ? "" : "s"}` : " shortly"}.`
+                    : isOverloaded
                     ? "The AI model is temporarily overloaded. Please try again in a moment."
                     : "Failed to generate agent configuration",
             },
             {
-                status: isOverloaded ? 503 : 500
+                status: isOverloaded || isRateLimited ? 503 : 500
             }
         )
     }

@@ -1,6 +1,6 @@
 import { AgentConfig, chatMessages, db } from "@/db";
 import { getConnectedTools } from "@/lib/agent-tools";
-import { isGroqOverloaded } from "@/lib/groq";
+import { getGroqRetryAfterMinutes, isGroqOverloaded, isGroqRateLimited } from "@/lib/groq";
 import { currentUser } from "@clerk/nextjs/server";
 import { and, asc, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
@@ -105,13 +105,17 @@ export const POST = async (req: NextRequest) => {
     } catch (error) {
         console.error(error)
         const overloaded = isGroqOverloaded(error)
+        const rateLimited = isGroqRateLimited(error)
+        const retryMinutes = getGroqRetryAfterMinutes(error)
         return NextResponse.json(
             {
-                error: overloaded
+                error: rateLimited
+                    ? `The AI model has hit its usage limit for now. Please try again${retryMinutes ? ` in about ${retryMinutes} minute${retryMinutes === 1 ? "" : "s"}` : " shortly"}.`
+                    : overloaded
                     ? "The AI model is temporarily overloaded. Please try again in a moment."
                     : "Failed to send message",
             },
-            { status: overloaded ? 503 : 500 }
+            { status: overloaded || rateLimited ? 503 : 500 }
         )
     } finally {
         agentIdsCurrentlySending.delete(agentId)
