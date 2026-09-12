@@ -322,7 +322,7 @@ export const AGENT_ACTIONS: AgentActionDef[] = [
         // Prefer this for a quick lookup; reach for browser_research when
         // the task needs to actually visit/verify a specific page.
         description:
-            "Search the web for current information, facts, or links using Google search results. Fast and read-only — prefer this over browser_research for a quick lookup that doesn't require visiting/verifying a specific page.",
+            "Search the web for current information, facts, or links using Google search results. Fast and read-only — prefer this over browser_research for a quick lookup that doesn't require visiting/verifying a specific page. Don't repeat a similar search if an earlier one in this conversation already returned relevant results — reuse what you already have instead of searching again. Returns only titles/links/snippets — there is no separate tool to \"open\" or fetch a result's full page; work from the snippet text, or call browser_research if you genuinely need a specific page's full content.",
         parameters: {
             type: "object",
             properties: {

@@ -27,8 +27,11 @@ export type ChatMessageRow = typeof chatMessages.$inferSelect
 
 // Bounds how many sequential Groq round-trips one HTTP request can make —
 // this is a synchronous request/response with no streaming, so an unbounded
-// tool-calling loop risks a very long hanging POST.
-const MAX_ITERATIONS = 4
+// tool-calling loop risks a very long hanging POST. Needs to be generous
+// enough for a real multi-step task (e.g. search, then post to Slack, then
+// write to Notion) to actually finish instead of exhausting its budget on
+// research alone — 4 was too tight for that in practice.
+const MAX_ITERATIONS = 8
 
 // Maps one persisted row back to the Groq message shape needed to replay
 // the conversation so far. A "tool" row with no toolCallId, or an
@@ -126,12 +129,46 @@ export const runChatTurn = async (
         // tool schemas in the request at all, it has nothing to call.
         const forceStop = iteration === MAX_ITERATIONS - 1
 
-        const response = await generateWithRetry(groq, {
-            model: GROQ_MODEL,
-            messages,
-            tools: actions.length > 0 && !forceStop ? actions.map(toGroqTool) : undefined,
-            tool_choice: actions.length > 0 && !forceStop ? "auto" : undefined,
-        })
+        let response: Awaited<ReturnType<typeof generateWithRetry>>
+        try {
+            response = await generateWithRetry(groq, {
+                model: GROQ_MODEL,
+                messages,
+                tools: actions.length > 0 && !forceStop ? actions.map(toGroqTool) : undefined,
+                tool_choice: actions.length > 0 && !forceStop ? "auto" : undefined,
+            })
+        } catch (error) {
+            // A non-retryable Groq failure (bad request, model error, etc.)
+            // would otherwise bubble straight out of this function with
+            // nothing recorded — the whole turn just goes silent, mid-task,
+            // with no trace in the transcript and no reply to the user. Persist
+            // a visible row instead, and return it rather than rethrow, so the
+            // caller (POST /api/agent/chat) still gets back a normal message
+            // instead of a generic failure toast with nothing left behind.
+            //
+            // A model that hallucinates a tool we never declared (seen in
+            // practice: it invents a "web_open" call to "open" a search
+            // result, which doesn't exist in our catalog) trips one of two
+            // Groq 400s: "Tool choice is none, but model called a tool" (on
+            // the forced final no-tools iteration) or "attempted to call
+            // tool 'x' which was not in request.tools" (on a normal
+            // iteration, tools attached, wrong name). Neither is a real
+            // system failure — both are "the model tried something we don't
+            // support" — so both get the same friendly wording the
+            // bottom-of-function fallback uses, instead of a raw JSON dump.
+            const isUnsupportedToolAttempt =
+                error instanceof Error && /tool_use_failed|which was not in request\.tools/.test(error.message)
+            const content = forceStop || isUnsupportedToolAttempt
+                ? "I wasn't able to finish that within the allowed number of steps — could you try rephrasing?"
+                : `Something went wrong completing this — please try again. (${error instanceof Error ? error.message : "unknown error"})`
+            const [saved] = await db.insert(chatMessages).values({
+                agentId: agent.agentId,
+                userEmail: agent.userEmail,
+                role: "assistant",
+                content,
+            }).returning()
+            return saved
+        }
 
         const choice = response.choices[0]?.message
         const toolCalls = choice?.tool_calls
