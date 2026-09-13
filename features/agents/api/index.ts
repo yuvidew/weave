@@ -5,6 +5,7 @@ import type {
   ChatHistoryResponse,
   ConnectToolResponse,
   CreatAgentType,
+  deleteAgentType,
   ResolveToolCallResponse,
   SendChatMessageResponse,
 } from "../types"
@@ -90,4 +91,22 @@ export const resolveToolCall = async (params: {
   const { data } = await axios.post<ResolveToolCallResponse>("/api/agent/chat/resolve", params)
 
   return data.message
+}
+
+// Deletes an agent and its scheduled runs. `agentName` isn't sent to the
+// API — it's only carried through as a mutation variable so useDeleteAgent's
+// onSuccess can toast the agent's name without the DELETE response (which is
+// just `{ message }`) needing to include the full row.
+export const deleteAgent = async ({ agentId }: { agentId: string; agentName: string }) => {
+  const { data } = await axios.delete<deleteAgentType>("/api/agent/configure", {
+    data: { agentId },
+  })
+
+  return data
+}
+
+export const updateAgent = async ({ agentId, agentConfig }: { agentId: string; agentConfig: Partial<CreatAgentType> }) => {
+  const { data } = await axios.put<CreatAgentType>("/api/agent/configure", { agentId, agentConfig })
+
+  return data
 }

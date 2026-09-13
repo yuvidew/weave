@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import { toast } from "@/components/ui/toast"
-import { agentConfigure, allAgents, createToolConnectUrl, disconnectTool, editAgent, getAgentTools } from "../api"
+import { agentConfigure, allAgents, createToolConnectUrl, deleteAgent, disconnectTool, editAgent, getAgentTools, updateAgent } from "../api"
 
 // Pulls the server's `{ error }` message out of a failed request, falling
 // back to a generic message for network errors or anything unexpected.
@@ -132,14 +132,47 @@ export const useDisconnectTool = () => {
   })
 }
 
-// Flips an agent's active/inactive status via the existing edit endpoint,
-// then refetches the My Agents list so the card reflects the new state.
-export const useToggleAgentStatus = () => {
+// Deletes an agent, then refetches My Agents so the deleted card disappears.
+// The DELETE response body only has `{ message }` (no agent row), so the
+// toast pulls the agent's name from the mutation's variables instead —
+// mirrors how useDisconnectTool reads `agentId` off its own variables.
+export const useDeleteAgent = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: editAgent,
-    mutationKey: ["toggle-agent-status"],
+    mutationFn: deleteAgent,
+    mutationKey: ["delete-agent"],
+    onSuccess: (_data, { agentName }) => {
+      queryClient.invalidateQueries({ queryKey: ["all-agents"] })
+      toast.add({
+        title: "Agent deleted",
+        description: `${agentName} was deleted.`,
+        type: "success",
+      })
+    },
+    onError: (error) => {
+      toast.add({
+        title: "Couldn't delete agent",
+        description: getErrorMessage(
+          error,
+          "Something went wrong deleting the agent. Please try again."
+        ),
+        type: "error",
+      })
+    },
+  })
+}
+
+
+// Flips an agent's active/inactive status via the existing edit endpoint,
+// then refetches the My Agents list so the card reflects the new state.
+// Status-aware toast copy since this is called directly from the "Pause
+// agent"/"Activate agent" menu item, not a generic form save.
+export const useUpdateAgent = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: updateAgent,
+    mutationKey: ["update-agent"],
     onSuccess: (agent) => {
       queryClient.invalidateQueries({ queryKey: ["all-agents"] })
       toast.add({

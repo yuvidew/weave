@@ -5,8 +5,7 @@ import { Loader2Icon, SparklesIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { toast } from "@/components/ui/toast"
-import { useAllAgents, useToggleAgentStatus } from "../hook/use-agent"
-import type { CreatAgentType } from "../types"
+import { useAllAgents } from "../hook/use-agent"
 import { AgentListCard } from "./agent-list-card"
 
 /**
@@ -16,24 +15,13 @@ import { AgentListCard } from "./agent-list-card"
  */
 export const MyAgents = ({ onCreateAgent }: { onCreateAgent?: () => void }) => {
   const { data: agents, isPending, isError, error } = useAllAgents()
-  const { mutate: toggleStatus } = useToggleAgentStatus()
 
-  // Flips an agent's status by sending the opposite value to the shared edit endpoint.
-  const handleToggleStatus = (agent: CreatAgentType) => {
-    toggleStatus({
-      agentId: agent.agentId,
-      agentConfig: { status: agent.status === "active" ? "inactive" : "active" },
-    })
-  }
-
-  // "Run now" and "Delete" have no backend endpoint yet — surface that
-  // honestly instead of pretending the action happened.
+  // "Run now" has no backend endpoint yet — surface that honestly instead of
+  // pretending the action happened. Pause/activate and delete are both
+  // handled by AgentListCard itself (its own useUpdateAgent/useDeleteAgent
+  // calls), so no handlers needed here.
   const handleRunNow = () => {
     toast.add({ title: "Coming soon", description: "Running an agent on demand isn't available yet.", type: "info" })
-  }
-
-  const handleDelete = () => {
-    toast.add({ title: "Coming soon", description: "Deleting agents isn't available yet.", type: "info" })
   }
 
   return (
@@ -78,9 +66,7 @@ export const MyAgents = ({ onCreateAgent }: { onCreateAgent?: () => void }) => {
             <AgentListCard
               key={agent.agentId}
               agent={agent}
-              onToggleStatus={handleToggleStatus}
               onRunNow={handleRunNow}
-              onDelete={handleDelete}
             />
           ))}
         </div>
