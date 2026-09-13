@@ -9,4 +9,12 @@ export const cn = (...inputs: ClassValue[]) => {
 
 export const getBrowserTimezone = () => {
   return (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC")
-} 
+}
+
+// Extracts up to two initials (first + last name) for the avatar fallback.
+export const getInitials = (name?: string | null) => {
+  if (!name) return "?"
+  const parts = name.trim().split(/\s+/)
+  const initials = [parts[0]?.[0], parts[1]?.[0]].filter(Boolean).join("")
+  return initials.toUpperCase() || "?"
+}

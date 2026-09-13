@@ -54,15 +54,6 @@ const data = {
       ),
       iconColor: "bg-amber-500/10 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400",
     },
-    {
-      title: "Templates",
-      url: "/templates",
-      icon: (
-        <LayoutTemplateIcon
-        />
-      ),
-      iconColor: "bg-rose-500/10 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400",
-    },
   ],
 }
 

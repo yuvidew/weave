@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useClerk } from "@clerk/nextjs"
+import { useClerk, useUser } from "@clerk/nextjs"
 import {
   Avatar,
   AvatarFallback,
@@ -23,19 +23,13 @@ import {
   SidebarMenuSkeleton,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { ChevronsUpDownIcon, SparklesIcon, BadgeCheckIcon, CreditCardIcon, BellIcon, LogOutIcon, Loader2Icon, SunMoonIcon } from "lucide-react"
+import { ChevronsUpDownIcon, BadgeCheckIcon, CreditCardIcon, LogOutIcon, Loader2Icon, SunMoonIcon } from "lucide-react"
 import { useUserDetail } from "@/context/user-detail-context"
 import { AgentUsageDialog } from "@/components/agent-usage-dialog"
 import { ThemeDialog } from "@/components/theme-dialog"
+import { ProfileDialog } from "@/components/profile-dialog"
 import { AGENT_LIMIT } from "@/db/schema"
-
-// Extracts up to two initials (first + last name) for the avatar fallback.
-const getInitials = (name?: string | null) => {
-  if (!name) return "?"
-  const parts = name.trim().split(/\s+/)
-  const initials = [parts[0]?.[0], parts[1]?.[0]].filter(Boolean).join("")
-  return initials.toUpperCase() || "?"
-}
+import { getInitials } from "@/lib/utils"
 
 /**
  * @component NavUser
@@ -45,10 +39,14 @@ export const NavUser = () => {
   const { isMobile } = useSidebar()
   const { userDetail } = useUserDetail()
   const { signOut } = useClerk()
+  // Clerk's live profile image — not persisted in our DB, read directly from the client hook.
+  const { user } = useUser()
   // Controls the open state of the agent-usage dialog, opened from the dropdown.
   const [usageOpen, setUsageOpen] = useState(false)
   // Controls the open state of the theme dialog, opened from the dropdown.
   const [themeOpen, setThemeOpen] = useState(false)
+  // Controls the open state of the profile dialog, opened from the dropdown.
+  const [profileOpen, setProfileOpen] = useState(false)
   // Dropdown is controlled so we can force it closed once sign-out settles.
   const [menuOpen, setMenuOpen] = useState(false)
   // True while the sign-out request is in flight — swaps the log-out icon for a spinner.
@@ -94,7 +92,7 @@ export const NavUser = () => {
             }
           >
             <Avatar>
-              <AvatarImage alt={name} />
+              <AvatarImage src={user?.imageUrl} alt={name} />
               <AvatarFallback>{initials}</AvatarFallback>
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight">
@@ -113,7 +111,7 @@ export const NavUser = () => {
               <DropdownMenuLabel className="p-0 font-normal">
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                   <Avatar>
-                    <AvatarImage alt={name} />
+                    <AvatarImage src={user?.imageUrl} alt={name} />
                     <AvatarFallback>{initials}</AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
@@ -123,17 +121,8 @@ export const NavUser = () => {
                 </div>
               </DropdownMenuLabel>
             </DropdownMenuGroup>
-            <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <SparklesIcon
-                />
-                Upgrade to Pro
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setProfileOpen(true)}>
                 <BadgeCheckIcon
                 />
                 Account
@@ -147,11 +136,6 @@ export const NavUser = () => {
                 <SunMoonIcon
                 />
                 Theme
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <BellIcon
-                />
-                Notifications
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
@@ -176,6 +160,14 @@ export const NavUser = () => {
         used={agentsUsed}
       />
       <ThemeDialog open={themeOpen} onOpenChange={setThemeOpen} />
+      <ProfileDialog
+        open={profileOpen}
+        onOpenChange={setProfileOpen}
+        name={name}
+        email={userDetail.email}
+        imageUrl={user?.imageUrl}
+        createdAt={userDetail.createdAt}
+      />
     </SidebarMenu>
   )
 }
