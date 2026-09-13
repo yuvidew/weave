@@ -23,10 +23,11 @@ import {
 } from "@/components/ui/item"
 import { FieldDescription, FieldTitle } from "@/components/ui/field"
 import { isDirectAuthTool } from "@/constant/direct-auth-tools"
-import { useAgentTools, useConnectTool } from "../hook/use-agent"
+import { useAgentTools, useConnectTool, useUpdateAgent } from "../hook/use-agent"
 import type { AgentSchedule, CreatAgentType } from "../types"
 import { AgentEditSheet } from "./agent-edit-sheet"
 import { AgentToolRow } from "./agent-tool-row"
+import { DeleteAgentDialog } from "./delete-agent-dialog"
 
 // Reuses the emerald/muted chip colors already used elsewhere in the app
 // (app-sidebar.tsx, create-agent.tsx) — Badge has no built-in "success" variant.
@@ -68,8 +69,6 @@ interface NewAgentCardPropType {
   agent: CreatAgentType
   onEdit?: (agent: CreatAgentType) => void
   onRunNow?: (agent: CreatAgentType) => void
-  onToggleStatus?: (agent: CreatAgentType) => void
-  onDelete?: (agent: CreatAgentType) => void
   // Set only by the create-agent flow, right after this exact agent was
   // generated — gates the auto-open-first-tool-popup effect below so a
   // re-render or another render site (e.g. the edit-preview route's mock
@@ -83,14 +82,15 @@ interface NewAgentCardPropType {
  * @param agent The saved agent to display.
  * @param onEdit Called with the agent when the edit button (or the overflow menu's "Edit agent") is clicked.
  * @param onRunNow Called with the agent when "Run now" is chosen from the overflow menu.
- * @param onToggleStatus Called with the agent when "Pause"/"Activate" is chosen from the overflow menu.
- * @param onDelete Called with the agent when "Delete" is chosen from the overflow menu.
  * @param isNewlyCreated Whether this card is showing an agent that was just created — enables the auto-connect behavior.
  */
-export const NewAgentCard = ({ agent, onEdit, onRunNow, onToggleStatus, onDelete, isNewlyCreated }: NewAgentCardPropType) => {
+export const NewAgentCard = ({ agent, onEdit, onRunNow, isNewlyCreated }: NewAgentCardPropType) => {
   // Local copy so a save in AgentEditSheet reflects here immediately — there's
   // no shared agents list/query yet to refetch from once "My Agents" exists.
   const [currentAgent, setCurrentAgent] = useState(agent)
+  // Delete confirmation is a DropdownMenuItem, not a real button — driven
+  // in controlled mode the same way AgentEditSheet is in AgentListCard.
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   // Stay in sync if the parent passes a newer `agent` (e.g. after a future list refetch).
   useEffect(() => {
@@ -107,6 +107,10 @@ export const NewAgentCard = ({ agent, onEdit, onRunNow, onToggleStatus, onDelete
   const hasConnectableTools = connectableSlugs.length > 0
   const { data: fetchedTools } = useAgentTools(currentAgent.agentId, hasConnectableTools)
   const connectTool = useConnectTool()
+  // Pause/activate updates the local currentAgent copy directly (via the
+  // per-call onSuccess below) since this card isn't backed by a live list
+  // query — cache invalidation alone wouldn't refresh what's on screen here.
+  const { mutate: onUpdateAgent, isPending } = useUpdateAgent()
 
   // Fires the first connectable tool's connect flow exactly once, right after
   // this agent was created — a fresh agent has zero connected accounts, so
@@ -172,12 +176,23 @@ export const NewAgentCard = ({ agent, onEdit, onRunNow, onToggleStatus, onDelete
                 <span>Edit agent</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onToggleStatus?.(currentAgent)}>
+              <DropdownMenuItem
+                disabled={isPending}
+                onClick={() =>
+                  onUpdateAgent(
+                    {
+                      agentId: currentAgent.agentId,
+                      agentConfig: { status: currentAgent.status === "active" ? "inactive" : "active" },
+                    },
+                    { onSuccess: setCurrentAgent }
+                  )
+                }
+              >
                 {currentAgent.status === "active" ? <PauseIcon /> : <PlayIcon />}
                 <span>{currentAgent.status === "active" ? "Pause agent" : "Activate agent"}</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onClick={() => onDelete?.(currentAgent)}>
+              <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
                 <Trash2Icon />
                 <span>Delete agent</span>
               </DropdownMenuItem>
@@ -185,6 +200,8 @@ export const NewAgentCard = ({ agent, onEdit, onRunNow, onToggleStatus, onDelete
           </DropdownMenu>
         </ItemActions>
       </Item>
+
+      <DeleteAgentDialog agent={currentAgent} open={deleteOpen} onOpenChange={setDeleteOpen} />
 
       {hasConnectableTools && (
         <div className="rounded-xl border p-4">

@@ -134,3 +134,10 @@ export type ChatMessageRow = {
 export type ChatHistoryResponse = { messages: ChatMessageRow[] }
 export type SendChatMessageResponse = { message: ChatMessageRow }
 export type ResolveToolCallResponse = { message: ChatMessageRow }
+
+
+export type deleteAgentType = {
+  message : string,
+  error? : string,
+  status : number
+}

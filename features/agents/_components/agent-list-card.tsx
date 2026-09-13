@@ -17,6 +17,8 @@ import { Separator } from "@/components/ui/separator"
 import type { AgentSchedule, CreatAgentType } from "../types"
 import { AgentEditSheet } from "./agent-edit-sheet"
 import { ChatSheet } from "./chat-sheet"
+import { DeleteAgentDialog } from "./delete-agent-dialog"
+import { useUpdateAgent } from "../hook/use-agent"
 
 // Same emerald/muted chip colors used by NewAgentCard (agent-card.tsx) — Badge
 // has no built-in "success" variant.
@@ -50,9 +52,7 @@ const formatScheduleLabel = (schedule: AgentSchedule | null | undefined): string
 interface AgentListCardProps {
   agent: CreatAgentType
   onEdit?: (agent: CreatAgentType) => void
-  onToggleStatus?: (agent: CreatAgentType) => void
   onRunNow?: (agent: CreatAgentType) => void
-  onDelete?: (agent: CreatAgentType) => void
 }
 
 /**
@@ -60,17 +60,22 @@ interface AgentListCardProps {
  * @description One card in the "My Agents" grid — avatar with a status dot, name, active/inactive badge, description, schedule, and a full-width "Run agent" action, plus an overflow menu for pause/activate and delete.
  * @param agent The saved agent to display.
  * @param onEdit Called with the freshly-saved agent once the edit sheet's save succeeds.
- * @param onToggleStatus Called with the agent when "Pause agent"/"Activate agent" is chosen.
  * @param onRunNow Called with the agent when "Run agent" is clicked.
- * @param onDelete Called with the agent when "Delete agent" is chosen.
  */
-export const AgentListCard = ({ agent, onEdit, onToggleStatus, onRunNow, onDelete }: AgentListCardProps) => {
-  // Edit sheet is opened from a DropdownMenuItem, which isn't a real <button> —
-  // Base UI's sheet trigger can't merge its click handling onto one, so this
-  // drives AgentEditSheet in controlled mode instead of using it as a trigger.
+export const AgentListCard = ({ agent, onEdit, onRunNow }: AgentListCardProps) => {
+  // Edit sheet and delete dialog are both opened from a DropdownMenuItem,
+  // which isn't a real <button> — Base UI's trigger can't merge its click
+  // handling onto one, so both are driven in controlled mode instead of
+  // being used as a trigger.
   const [editOpen, setEditOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const statusBadge = STATUS_BADGE[agent.status]
   const scheduleLabel = formatScheduleLabel(agent.schedule)
+
+  // Pause/activate calls the update endpoint directly with the flipped
+  // status — cache invalidation in useUpdateAgent's onSuccess is what
+  // refreshes this card, same as delete.
+  const { mutate: onUpdateAgent, isPending } = useUpdateAgent()
 
   return (
     <div className="flex flex-col gap-3 rounded-xl bg-card p-5 text-sm ring-1 ring-foreground/10">
@@ -104,12 +109,20 @@ export const AgentListCard = ({ agent, onEdit, onToggleStatus, onRunNow, onDelet
                 <span>Edit agent</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onToggleStatus?.(agent)}>
+              <DropdownMenuItem
+                disabled={isPending}
+                onClick={() =>
+                  onUpdateAgent({
+                    agentId: agent.agentId,
+                    agentConfig: { status: agent.status === "active" ? "inactive" : "active" },
+                  })
+                }
+              >
                 {agent.status === "active" ? <PauseIcon /> : <PlayIcon />}
                 <span>{agent.status === "active" ? "Pause agent" : "Activate agent"}</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onClick={() => onDelete?.(agent)}>
+              <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
                 <Trash2Icon />
                 <span>Delete agent</span>
               </DropdownMenuItem>
@@ -153,6 +166,7 @@ export const AgentListCard = ({ agent, onEdit, onToggleStatus, onRunNow, onDelet
       </div>
 
       <AgentEditSheet agent={agent} onUpdated={onEdit} open={editOpen} onOpenChange={setEditOpen} />
+      <DeleteAgentDialog agent={agent} open={deleteOpen} onOpenChange={setDeleteOpen} />
     </div>
   )
 }
