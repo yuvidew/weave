@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import { toast } from "@/components/ui/toast"
-import { agentConfigure, allAgents, createToolConnectUrl, deleteAgent, disconnectTool, editAgent, getAgentTools, updateAgent } from "../api"
+import { agentConfigure, allAgents, createToolConnectUrl, deleteAgent, disconnectTool, editAgent, getAgentTools, runAgentNow, updateAgent } from "../api"
 
 // Pulls the server's `{ error }` message out of a failed request, falling
 // back to a generic message for network errors or anything unexpected.
@@ -166,6 +166,34 @@ export const useDeleteAgent = () => {
   })
 }
 
+
+// Queues an immediate run for one agent (POST /api/agent/run), separate from
+// whatever its recurring schedule has queued. Invalidates get-logs (not
+// all-agents — the agent row itself doesn't change) so the new run shows up
+// in the Runs table and dashboard once it's picked up.
+export const useRunAgentNow = () => {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: runAgentNow,
+    mutationKey: ["run-agent-now"],
+    onSuccess: (_data, { agentName }) => {
+      queryClient.invalidateQueries({ queryKey: ["get-logs"] })
+      toast.add({
+        title: "Run started",
+        description: `${agentName} is running now.`,
+        type: "success",
+      })
+    },
+    onError: (error) => {
+      toast.add({
+        title: "Couldn't start the run",
+        description: getErrorMessage(error, "Something went wrong starting that run. Please try again."),
+        type: "error",
+      })
+    },
+  })
+}
 
 // Flips an agent's active/inactive status via the existing edit endpoint,
 // then refetches the My Agents list so the card reflects the new state.

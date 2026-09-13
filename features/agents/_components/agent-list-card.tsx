@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { ClockIcon, MessageCircleIcon, MoreHorizontalIcon, PauseIcon, PencilIcon, PlayIcon, Trash2Icon, ZapIcon } from "lucide-react"
+import { ClockIcon, Loader2Icon, MessageCircleIcon, MoreHorizontalIcon, PauseIcon, PencilIcon, PlayIcon, Trash2Icon, ZapIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -18,7 +18,7 @@ import type { AgentSchedule, CreatAgentType } from "../types"
 import { AgentEditSheet } from "./agent-edit-sheet"
 import { ChatSheet } from "./chat-sheet"
 import { DeleteAgentDialog } from "./delete-agent-dialog"
-import { useUpdateAgent } from "../hook/use-agent"
+import { useRunAgentNow, useUpdateAgent } from "../hook/use-agent"
 
 // Same emerald/muted chip colors used by NewAgentCard (agent-card.tsx) — Badge
 // has no built-in "success" variant.
@@ -52,7 +52,6 @@ const formatScheduleLabel = (schedule: AgentSchedule | null | undefined): string
 interface AgentListCardProps {
   agent: CreatAgentType
   onEdit?: (agent: CreatAgentType) => void
-  onRunNow?: (agent: CreatAgentType) => void
 }
 
 /**
@@ -60,9 +59,8 @@ interface AgentListCardProps {
  * @description One card in the "My Agents" grid — avatar with a status dot, name, active/inactive badge, description, schedule, and a full-width "Run agent" action, plus an overflow menu for pause/activate and delete.
  * @param agent The saved agent to display.
  * @param onEdit Called with the freshly-saved agent once the edit sheet's save succeeds.
- * @param onRunNow Called with the agent when "Run agent" is clicked.
  */
-export const AgentListCard = ({ agent, onEdit, onRunNow }: AgentListCardProps) => {
+export const AgentListCard = ({ agent, onEdit }: AgentListCardProps) => {
   // Edit sheet and delete dialog are both opened from a DropdownMenuItem,
   // which isn't a real <button> — Base UI's trigger can't merge its click
   // handling onto one, so both are driven in controlled mode instead of
@@ -76,6 +74,9 @@ export const AgentListCard = ({ agent, onEdit, onRunNow }: AgentListCardProps) =
   // status — cache invalidation in useUpdateAgent's onSuccess is what
   // refreshes this card, same as delete.
   const { mutate: onUpdateAgent, isPending } = useUpdateAgent()
+  // "Run now" queues an immediate run directly — same self-contained-mutation
+  // pattern as pause/activate/delete above, rather than a prop from My Agents.
+  const { mutate: onRunNow, isPending: isRunningNow } = useRunAgentNow()
 
   return (
     <div className="flex flex-col gap-3 rounded-xl bg-card p-5 text-sm ring-1 ring-foreground/10">
@@ -100,7 +101,10 @@ export const AgentListCard = ({ agent, onEdit, onRunNow }: AgentListCardProps) =
               <span className="sr-only">More</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onRunNow?.(agent)}>
+              <DropdownMenuItem
+                disabled={isRunningNow}
+                onClick={() => onRunNow({ agentId: agent.agentId, agentName: agent.name })}
+              >
                 <ZapIcon />
                 <span>Run now</span>
               </DropdownMenuItem>
@@ -151,9 +155,10 @@ export const AgentListCard = ({ agent, onEdit, onRunNow }: AgentListCardProps) =
       <div className="flex items-center gap-3">
         <Button
           className="flex-1"
-          onClick={() => onRunNow?.(agent)}
+          disabled={isRunningNow}
+          onClick={() => onRunNow({ agentId: agent.agentId, agentName: agent.name })}
         >
-          <PlayIcon />
+          {isRunningNow ? <Loader2Icon className="animate-spin" /> : <PlayIcon />}
           Run agent
         </Button>
 
