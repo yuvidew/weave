@@ -141,3 +141,10 @@ export type deleteAgentType = {
   error? : string,
   status : number
 }
+
+// Body of POST /api/agent/run — the run row is created and immediately handed
+// to Inngest, so only its id comes back (not the full Run row/shape).
+export type RunAgentNowResponse = {
+  message: string
+  runId: string
+}

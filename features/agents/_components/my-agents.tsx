@@ -4,7 +4,6 @@ import { isAxiosError } from "axios"
 import { Loader2Icon, SparklesIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { toast } from "@/components/ui/toast"
 import { useAllAgents } from "../hook/use-agent"
 import { AgentListCard } from "./agent-list-card"
 
@@ -15,14 +14,6 @@ import { AgentListCard } from "./agent-list-card"
  */
 export const MyAgents = ({ onCreateAgent }: { onCreateAgent?: () => void }) => {
   const { data: agents, isPending, isError, error } = useAllAgents()
-
-  // "Run now" has no backend endpoint yet — surface that honestly instead of
-  // pretending the action happened. Pause/activate and delete are both
-  // handled by AgentListCard itself (its own useUpdateAgent/useDeleteAgent
-  // calls), so no handlers needed here.
-  const handleRunNow = () => {
-    toast.add({ title: "Coming soon", description: "Running an agent on demand isn't available yet.", type: "info" })
-  }
 
   return (
     <div className="mt-5 flex flex-col gap-6">
@@ -66,7 +57,6 @@ export const MyAgents = ({ onCreateAgent }: { onCreateAgent?: () => void }) => {
             <AgentListCard
               key={agent.agentId}
               agent={agent}
-              onRunNow={handleRunNow}
             />
           ))}
         </div>

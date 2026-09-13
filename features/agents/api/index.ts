@@ -7,6 +7,7 @@ import type {
   CreatAgentType,
   deleteAgentType,
   ResolveToolCallResponse,
+  RunAgentNowResponse,
   SendChatMessageResponse,
 } from "../types"
 import { getBrowserTimezone } from "@/lib/utils"
@@ -107,6 +108,13 @@ export const deleteAgent = async ({ agentId }: { agentId: string; agentName: str
 
 export const updateAgent = async ({ agentId, agentConfig }: { agentId: string; agentConfig: Partial<CreatAgentType> }) => {
   const { data } = await axios.put<CreatAgentType>("/api/agent/configure", { agentId, agentConfig })
+
+  return data
+}
+
+// Queues an immediate run for one agent, outside its normal schedule.
+export const runAgentNow = async ({ agentId }: { agentId: string; agentName: string }) => {
+  const { data } = await axios.post<RunAgentNowResponse>("/api/agent/run", { agentId })
 
   return data
 }

@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/item"
 import { FieldDescription, FieldTitle } from "@/components/ui/field"
 import { isDirectAuthTool } from "@/constant/direct-auth-tools"
-import { useAgentTools, useConnectTool, useUpdateAgent } from "../hook/use-agent"
+import { useAgentTools, useConnectTool, useRunAgentNow, useUpdateAgent } from "../hook/use-agent"
 import type { AgentSchedule, CreatAgentType } from "../types"
 import { AgentEditSheet } from "./agent-edit-sheet"
 import { AgentToolRow } from "./agent-tool-row"
@@ -68,7 +68,6 @@ const formatNextRun = (schedule: AgentSchedule | null | undefined): string | nul
 interface NewAgentCardPropType {
   agent: CreatAgentType
   onEdit?: (agent: CreatAgentType) => void
-  onRunNow?: (agent: CreatAgentType) => void
   // Set only by the create-agent flow, right after this exact agent was
   // generated — gates the auto-open-first-tool-popup effect below so a
   // re-render or another render site (e.g. the edit-preview route's mock
@@ -81,10 +80,9 @@ interface NewAgentCardPropType {
  * @description One row in the "My Agents" list — avatar, name, status badge, description, and next-run schedule, with an edit action and an overflow menu (run now, edit, pause/activate, delete). Keeps its own copy of `agent` so a save in the edit sheet updates the row in place. When `isNewlyCreated`, also renders a "Connect your tools" section and auto-opens the first OAuth tool's connect popup.
  * @param agent The saved agent to display.
  * @param onEdit Called with the agent when the edit button (or the overflow menu's "Edit agent") is clicked.
- * @param onRunNow Called with the agent when "Run now" is chosen from the overflow menu.
  * @param isNewlyCreated Whether this card is showing an agent that was just created — enables the auto-connect behavior.
  */
-export const NewAgentCard = ({ agent, onEdit, onRunNow, isNewlyCreated }: NewAgentCardPropType) => {
+export const NewAgentCard = ({ agent, onEdit, isNewlyCreated }: NewAgentCardPropType) => {
   // Local copy so a save in AgentEditSheet reflects here immediately — there's
   // no shared agents list/query yet to refetch from once "My Agents" exists.
   const [currentAgent, setCurrentAgent] = useState(agent)
@@ -111,6 +109,9 @@ export const NewAgentCard = ({ agent, onEdit, onRunNow, isNewlyCreated }: NewAge
   // per-call onSuccess below) since this card isn't backed by a live list
   // query — cache invalidation alone wouldn't refresh what's on screen here.
   const { mutate: onUpdateAgent, isPending } = useUpdateAgent()
+  // "Run now" queues an immediate run directly — same self-contained-mutation
+  // pattern as pause/activate above, rather than a prop from the parent.
+  const { mutate: onRunNow, isPending: isRunningNow } = useRunAgentNow()
 
   // Fires the first connectable tool's connect flow exactly once, right after
   // this agent was created — a fresh agent has zero connected accounts, so
@@ -167,7 +168,10 @@ export const NewAgentCard = ({ agent, onEdit, onRunNow, isNewlyCreated }: NewAge
               <span className="sr-only">More</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onRunNow?.(currentAgent)}>
+              <DropdownMenuItem
+                disabled={isRunningNow}
+                onClick={() => onRunNow({ agentId: currentAgent.agentId, agentName: currentAgent.name })}
+              >
                 <ZapIcon />
                 <span>Run now</span>
               </DropdownMenuItem>
