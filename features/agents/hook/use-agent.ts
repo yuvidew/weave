@@ -72,10 +72,13 @@ export const useEditAgent = () => {
 }
 
 
-export const useAllAgents = () =>{
+// `refetchInterval` is opt-in (e.g. the dashboard polls for live agent data)
+// so My Agents doesn't silently refetch/reset scroll for pages that don't ask for it.
+export const useAllAgents = (options?: { refetchInterval?: number }) =>{
   return useQuery({
     queryFn : allAgents,
-    queryKey : ["all-agents"]
+    queryKey : ["all-agents"],
+    refetchInterval: options?.refetchInterval,
   })
 }
 
