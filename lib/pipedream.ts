@@ -3,7 +3,9 @@ import { PipedreamClient } from "@pipedream/sdk";
 // Server-side Pipedream Connect client — replaces the old Composio client.
 // Unlike Composio, this has no LLM "provider" concept and no session to
 // create/persist: every call is just (externalUserId, app-or-accountId), and
-// `AgentConfig.agentId` doubles as the externalUserId directly.
+// the signed-in user's email doubles as the externalUserId directly —
+// connections are per-user, not per-agent, so connecting an app once makes
+// it available to every one of that user's agents (see lib/agent-tools.ts).
 export const pipedream = new PipedreamClient({
     projectEnvironment: process.env.PIPEDREAM_ENVIRONMENT as "development" | "production",
     clientId: process.env.PIPEDREAM_CLIENT_ID,

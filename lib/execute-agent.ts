@@ -58,8 +58,10 @@ export const executeAgent = async ({
         .orderBy(asc(chatMessages.id))
 
     // `tools` is a nullable jsonb column — never assume it's an array.
+    // Connections are per-user (see lib/agent-tools.ts), so this covers
+    // every app the user has connected from any agent or the Plugins page.
     const allowedTools: string[] = Array.isArray(agentRow.tools) ? agentRow.tools : []
-    const connectedTools = await getConnectedTools(agentRow.agentId, allowedTools)
+    const connectedTools = await getConnectedTools(userEmail, allowedTools)
 
     // Also folded into the system prompt (not just the user turn above) so
     // it survives even if the model weighs the system prompt more heavily

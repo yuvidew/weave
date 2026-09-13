@@ -69,12 +69,13 @@ const toGroqTool = (action: AgentActionDef): ChatCompletionTool => ({
     function: { name: action.name, description: action.description, parameters: action.parameters },
 })
 
-// Executes one curated action for real via Pipedream against the agent's
-// connected account for that action's app.
-const runAction = (action: PipedreamAgentAction, args: Record<string, unknown>, agentId: string, connectedAccountId: string) =>
+// Executes one curated action for real via Pipedream against the user's
+// connected account for that action's app (connections are per-user, not
+// per-agent — see lib/agent-tools.ts).
+const runAction = (action: PipedreamAgentAction, args: Record<string, unknown>, externalUserId: string, connectedAccountId: string) =>
     pipedream.actions.run({
         id: action.componentId,
-        externalUserId: agentId,
+        externalUserId,
         configuredProps: {
             [action.appPropName]: { authProvisionId: connectedAccountId },
             ...action.toConfiguredProps(args),
@@ -256,7 +257,7 @@ export const runChatTurn = async (
                     mergedArgs = { ...resolved, ...args }
                 }
 
-                const result = await runAction(action, mergedArgs, agent.agentId, connectedTool.connectedAccountId)
+                const result = await runAction(action, mergedArgs, agent.userEmail ?? "", connectedTool.connectedAccountId)
                 resolvedCalls.push({
                     id: toolCall.id, name: action.name, arguments: mergedArgs,
                     label: action.toApprovalLabel(mergedArgs), needsApproval: false, status: "done", result,

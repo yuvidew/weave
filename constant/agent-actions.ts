@@ -16,6 +16,11 @@ import { runWebSearch } from "@/lib/serpapi-tool";
 // circular import (app/api/agent/chat/_lib.ts already imports from here).
 export type AgentConfigLike = {
     agentId: string
+    // Pipedream's externalUserId for this agent's owner — connections are
+    // per-user, not per-agent (see lib/agent-tools.ts), so this is what
+    // resolveMissingArgs implementations must pass to pipedream.actions.run,
+    // not agentId.
+    userEmail: string | null
     // Drizzle infers untyped jsonb columns as `unknown` (same as
     // AgentConfig.tools/skills elsewhere) — narrow it at the read site.
     toolDefaults: unknown
@@ -185,7 +190,7 @@ export const AGENT_ACTIONS: AgentActionDef[] = [
 
             const search = await pipedream.actions.run({
                 id: "notion-search",
-                externalUserId: agent.agentId,
+                externalUserId: agent.userEmail ?? "",
                 configuredProps: {
                     notion: { authProvisionId: connectedAccountId },
                     filter: "page",

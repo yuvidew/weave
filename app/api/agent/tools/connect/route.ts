@@ -23,9 +23,11 @@ const loadOwnedAgentWithTool = async (agentId: string, slug: string, userEmail: 
     return agentConfig
 }
 
-// Mints a short-lived Connect token scoped to this agent (agentId doubles as
-// Pipedream's externalUserId) and one app, and returns the hosted Connect
-// Link URL the client opens to run that app's OAuth flow.
+// Mints a short-lived Connect token scoped to this user (userEmail doubles
+// as Pipedream's externalUserId — connections aren't per-agent, so this
+// grants every one of the user's agents access, not just this one) and one
+// app, and returns the hosted Connect Link URL the client opens to run that
+// app's OAuth flow.
 export const POST = async (req: NextRequest) => {
     const { agentId, slug } = await req.json();
 
@@ -60,7 +62,7 @@ export const POST = async (req: NextRequest) => {
         const pipedreamAppSlug = resolvePipedreamAppSlug(slug)
 
         const { connectLinkUrl } = await pipedream.tokens.create({
-            externalUserId: agentId,
+            externalUserId: userEmail,
             // Resolves the app's OAuth client and pins the link's host to it.
             appId: pipedreamAppSlug,
         })
@@ -76,8 +78,10 @@ export const POST = async (req: NextRequest) => {
     }
 }
 
-// Removes the agent's connected account for one app, so a fresh Connect flow
-// is required next time (mirrors the "Disconnect" button in the edit sheet).
+// Removes the user's connected account for one app — since connections are
+// per-user, this disconnects it for every one of the user's agents, not just
+// this one — so a fresh Connect flow is required next time (mirrors the
+// "Disconnect" button in the edit sheet).
 export const DELETE = async (req: NextRequest) => {
     const { agentId, slug } = await req.json();
 
@@ -107,7 +111,7 @@ export const DELETE = async (req: NextRequest) => {
         // Same 404-means-"no accounts yet" case as the GET route — disconnecting
         // a tool that was never connected shouldn't be a server error.
         const accounts = await pipedream.accounts
-            .listByExternalUser(agentId, { app: resolvePipedreamAppSlug(slug) })
+            .listByExternalUser(userEmail, { app: resolvePipedreamAppSlug(slug) })
             .catch((error) => {
                 if (error instanceof PipedreamError && error.statusCode === 404) return []
                 throw error
