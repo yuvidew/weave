@@ -96,8 +96,10 @@ export const POST = async (req: NextRequest) => {
             .orderBy(asc(chatMessages.id))
 
         // `tools` is a nullable jsonb column — never assume it's an array.
+        // Connections are per-user (see lib/agent-tools.ts), so this covers
+        // every app the user has connected from any agent or the Plugins page.
         const allowedTools: string[] = Array.isArray(agent.tools) ? agent.tools : []
-        const connectedTools = await getConnectedTools(agentId, allowedTools)
+        const connectedTools = await getConnectedTools(userEmail, allowedTools)
 
         const reply = await runChatTurn(agent, history, connectedTools)
 

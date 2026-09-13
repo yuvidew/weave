@@ -7,20 +7,23 @@ export type ConnectedTool = {
     connectedAccountId: string;
 };
 
-// Resolves which of an agent's allowed catalog slugs are actually connected
+// Resolves which of a user's allowed catalog slugs are actually connected
 // (a healthy, non-dead Pipedream account exists) right now, along with the
 // Pipedream account id each one needs for actions.run()'s app-type
-// configuredProps (`{ authProvisionId: connectedAccountId }`). Shared by
-// GET /api/agent/tools (display) and app/api/agent/chat/route.ts (deciding
-// which curated actions to actually offer the model this turn).
+// configuredProps (`{ authProvisionId: connectedAccountId }`). Connections
+// are scoped to the user (externalUserId = userEmail), not any one agent —
+// connecting an app once (from the Plugins page, or an agent's edit sheet)
+// makes it available to every one of that user's agents. Shared by
+// GET /api/agent/tools (display), app/api/agent/chat/route.ts and
+// lib/execute-agent.ts (deciding which curated actions to offer this turn).
 export const getConnectedTools = async (
-    agentId: string,
+    externalUserId: string,
     allowedSlugs: string[]
 ): Promise<ConnectedTool[]> => {
     if (allowedSlugs.length === 0) return [];
 
     // Direct-auth tools (e.g. "browserbase") use one shared server-side API
-    // key, not a per-agent Pipedream OAuth account — they're always
+    // key, not a per-user Pipedream OAuth account — they're always
     // available, so skip the Pipedream lookup for them entirely.
     // `connectedAccountId` is a sentinel here; direct actions never read it.
     const directTools: ConnectedTool[] = allowedSlugs
@@ -31,10 +34,10 @@ export const getConnectedTools = async (
     if (pipedreamSlugs.length === 0) return directTools
 
     // Pipedream 404s this call (instead of returning []) for an
-    // externalUserId it's never seen before — i.e. an agent that's never had
+    // externalUserId it's never seen before — i.e. a user who's never had
     // any tool connected yet — so that specific case means "no connected
     // accounts," not a real failure.
-    const connectedAccounts = await pipedream.accounts.listByExternalUser(agentId).catch((error) => {
+    const connectedAccounts = await pipedream.accounts.listByExternalUser(externalUserId).catch((error) => {
         if (error instanceof PipedreamError && error.statusCode === 404) return []
         throw error
     })

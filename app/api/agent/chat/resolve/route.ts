@@ -75,7 +75,7 @@ export const POST = async (req: NextRequest) => {
             }
         } else {
             const allowedTools: string[] = Array.isArray(agent.tools) ? agent.tools : []
-            const connectedTools = await getConnectedTools(agentId, allowedTools)
+            const connectedTools = await getConnectedTools(userEmail, allowedTools)
             const connectedTool = connectedTools.find((tool) => tool.slug === action.catalogSlug)
 
             if (!connectedTool) {
@@ -85,7 +85,7 @@ export const POST = async (req: NextRequest) => {
                 try {
                     const result = await pipedream.actions.run({
                         id: action.componentId,
-                        externalUserId: agentId,
+                        externalUserId: userEmail,
                         configuredProps: {
                             [action.appPropName]: { authProvisionId: connectedTool.connectedAccountId },
                             ...action.toConfiguredProps(call.arguments),
@@ -133,7 +133,7 @@ export const POST = async (req: NextRequest) => {
             .orderBy(asc(chatMessages.id))
 
         const allowedTools: string[] = Array.isArray(agent.tools) ? agent.tools : []
-        const connectedTools = await getConnectedTools(agentId, allowedTools)
+        const connectedTools = await getConnectedTools(userEmail, allowedTools)
         const reply = await runChatTurn(agent, history, connectedTools)
 
         return NextResponse.json({ message: reply })

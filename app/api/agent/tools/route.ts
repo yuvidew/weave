@@ -54,9 +54,10 @@ export const GET = async (req: NextRequest) => {
     try {
         // Single source of truth for "is this slug actually connected" —
         // shared with the chat route, which uses it to decide which curated
-        // actions to offer the model. One call here covers every app this
-        // agent has ever connected — cheaper than a per-slug lookup.
-        const connectedTools = await getConnectedTools(agentId, allowedTools)
+        // actions to offer the model. Scoped to the user (not this one
+        // agent) — one call here covers every app this user has ever
+        // connected, from any agent or the Plugins page.
+        const connectedTools = await getConnectedTools(userEmail, allowedTools)
 
         // Accounts don't carry the app's name/logo when nothing's connected
         // yet, so fetch each allowed slug's app metadata directly — this is
