@@ -1,4 +1,5 @@
 import Browserbase from "@browserbasehq/sdk"
+import { withRetries } from "@/lib/retry"
 
 // Terminal statuses for a Browserbase agent run — once reached, `result` is
 // populated (if any) and polling stops.
@@ -55,16 +56,27 @@ export const runBrowserResearch = async (
     }
 
     const bb = new Browserbase({ apiKey: process.env.BROWSERBASE_API_KEY! })
-    const { runId } = await bb.agents.runs.create({
+    // A transient failure just starting the run (network blip, momentary 5xx)
+    // shouldn't fail the whole task before it even begins.
+    const { runId } = await withRetries(() => bb.agents.runs.create({
         agentId: process.env.BROWSERBASE_AGENT_ID!,
         task,
         browserSettings: { proxies: true },
         resultSchema: RESULT_SCHEMA,
-    })
+    }))
 
     const deadline = Date.now() + POLL_DEADLINE_MS
     while (Date.now() < deadline) {
-        const run = await bb.agents.runs.retrieve(runId)
+        // A single flaky poll request shouldn't abort a run that's still
+        // legitimately in progress — just try again next interval, still
+        // bounded by the same overall deadline.
+        let run: Awaited<ReturnType<typeof bb.agents.runs.retrieve>>
+        try {
+            run = await bb.agents.runs.retrieve(runId)
+        } catch {
+            await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
+            continue
+        }
 
         if (TERMINAL_STATUSES.includes(run.status)) {
             if (run.status !== "COMPLETED") {

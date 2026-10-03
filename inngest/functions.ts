@@ -1,10 +1,17 @@
 
 import { AgentConfig, AgentRun, db } from "@/db";
 import { calculateNextDailyRun } from "@/lib/agent-schedule";
-import { executeAgent } from "@/lib/execute-agent";
+import { executeAgent, isDegradedReply } from "@/lib/execute-agent";
+import { withTimeout } from "@/lib/with-timeout";
 import { and, asc, eq, gte, lte } from "drizzle-orm";
 import { inngest } from "./client";
 import { CreatAgentType } from "@/features/agents/types";
+
+// Independent of any per-tool timeout (SerpAPI's 15s, Browserbase's 3min
+// poll deadline) — a hard ceiling on one whole agent turn so a hung external
+// call can't hang this Inngest step forever. See agent-reliability-report.md
+// §6 recommendation 6.
+const AGENT_RUN_TIMEOUT_MS = 4 * 60 * 1000
 
 export const ProcessScheduledAgent = inngest.createFunction(
   {
@@ -111,12 +118,25 @@ export const ProcessScheduledAgent = inngest.createFunction(
             updatedAt: String(agentConfig.updatedAt),
           };
 
-          return await executeAgent({
-            agentConfig: executableAgentConfig,
-            userEmail: run.userEmail,
-            input: executableAgentConfig.objective,
-          });
+          return await withTimeout(
+            executeAgent({
+              agentConfig: executableAgentConfig,
+              userEmail: run.userEmail,
+              input: executableAgentConfig.objective,
+            }),
+            AGENT_RUN_TIMEOUT_MS,
+            `Agent run exceeded the ${AGENT_RUN_TIMEOUT_MS / 1000}s execution timeout.`
+          );
         });
+
+        // Step 4b: A turn that ended in a fallback message or an unresolved
+        // tool-call error didn't actually complete the task, even though
+        // executeAgent() returned normally instead of throwing — treat it as
+        // a failure rather than silently recording "completed" (the biggest
+        // gap found in agent-reliability-report.md §5.2).
+        if (isDegradedReply(output)) {
+          throw new Error(`Agent turn did not complete the task — final reply: ${JSON.stringify(output.content)}`);
+        }
 
         // Step 5: Persist the successful output back to the AgentRun row.
         await step.run(`mark-run-completed-${run.id}`, async () => {
@@ -310,12 +330,22 @@ export const ExecuteScheduleAgent = inngest.createFunction(
                     updatedAt : String(agentConfig.updatedAt),
                 };
 
-                return await executeAgent({
-                    agentConfig : executabAgentConfig,
-                    userEmail : run.userEmail,
-                    input : executabAgentConfig.objective,
-                });
+                return await withTimeout(
+                    executeAgent({
+                        agentConfig : executabAgentConfig,
+                        userEmail : run.userEmail,
+                        input : executabAgentConfig.objective,
+                    }),
+                    AGENT_RUN_TIMEOUT_MS,
+                    `Agent run exceeded the ${AGENT_RUN_TIMEOUT_MS / 1000}s execution timeout.`
+                );
             });
+
+            // Step 5b: same "returned normally but didn't actually finish"
+            // check as ProcessScheduledAgent above — see its comment.
+            if (isDegradedReply(output)) {
+                throw new Error(`Agent turn did not complete the task — final reply: ${JSON.stringify(output.content)}`);
+            }
 
             // step 6: Resist the successfull output back to the agent
             await step.run(`mark-run-completed-${run.id}`, async () => {

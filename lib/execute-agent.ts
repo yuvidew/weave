@@ -1,8 +1,15 @@
 import { AgentConfig, chatMessages, db } from "@/db";
 import { getConnectedTools } from "@/lib/agent-tools";
-import { runChatTurn } from "@/app/api/agent/chat/_lib";
+import { runChatTurn, STEPS_EXHAUSTED_MESSAGE, type StoredToolCall } from "@/app/api/agent/chat/_lib";
 import { asc, eq } from "drizzle-orm";
 import type { CreatAgentType } from "@/features/agents/types";
+
+// A scheduled run with no user around to notice a run-to-run-inconsistent
+// answer benefits more from a low temperature than interactive chat does —
+// see agent-reliability-report.md §6 recommendation 5 (confirmed live: the
+// same loop-bait eval prompt behaved differently across two identical runs
+// with no temperature set at all).
+const SCHEDULED_RUN_TEMPERATURE = 0.2
 
 // Told to every scheduler-triggered run so the model treats it as a
 // fire-and-forget execution instead of a live chat turn awaiting the user's
@@ -72,11 +79,28 @@ export const executeAgent = async ({
         instructions: [agentRow.instructions ?? "", SCHEDULED_RUN_INSTRUCTION].filter(Boolean).join("\n\n"),
     }
 
-    const reply = await runChatTurn(scheduledAgentRow, history, connectedTools)
+    const reply = await runChatTurn(scheduledAgentRow, history, connectedTools, { temperature: SCHEDULED_RUN_TEMPERATURE })
 
     return {
         assistantMessageId: reply.id,
         content: reply.content,
         toolCalls: reply.toolCalls,
     }
+}
+
+// True when a turn ended without genuinely completing the task — either the
+// fixed "steps exhausted" fallback, or the final turn's own tool calls
+// include an unresolved error. `runChatTurn` never throws for these cases
+// (see its module comment), so nothing upstream naturally distinguishes them
+// from a real success — this is what inngest/functions.ts checks before
+// marking an AgentRun "completed" (agent-reliability-report.md §5.2/§6
+// recommendation 1). Only looks at the *final* turn's calls: an error
+// earlier in the turn that a later iteration recovered from is fine and
+// shouldn't be flagged.
+export const isDegradedReply = (reply: { content: string | null; toolCalls: unknown }): boolean => {
+    if (reply.content === STEPS_EXHAUSTED_MESSAGE) return true
+    if (reply.content?.startsWith("Something went wrong completing this")) return true
+
+    const toolCalls = (reply.toolCalls as StoredToolCall[] | null) ?? []
+    return toolCalls.some((call) => call.status === "error")
 }

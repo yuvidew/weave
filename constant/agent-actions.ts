@@ -177,10 +177,14 @@ export const AGENT_ACTIONS: AgentActionDef[] = [
         // has no "workspace root" — every page needs a parent. Rather than
         // asking the user, reuse a previously-discovered default, or (the
         // very first time only) search the pages already shared with this
-        // Notion connection and adopt the first one. Safe to just take
-        // result[0]: this search only ever runs once per agent, before any
-        // page this action creates exists yet, so every candidate at that
-        // point is genuinely pre-existing, user-shared content.
+        // Notion connection. If exactly one is shared, adopt it — that's
+        // still genuinely unambiguous. If more than one is shared, silently
+        // taking `results[0]` would be a real, invisible bad-call risk (the
+        // "wrong" page picked forever, since the guess then gets persisted —
+        // see agent-reliability-report.md §3/§6 recommendation 8), so surface
+        // the ambiguity as an error instead — the model can then tell the
+        // user to name a page explicitly (`parentId`) rather than the app
+        // guessing on their behalf.
         resolveMissingArgs: async (args, { agent, connectedAccountId, persistDefault }) => {
             if (args.parentId) return {}
 
@@ -194,16 +198,23 @@ export const AGENT_ACTIONS: AgentActionDef[] = [
                 configuredProps: {
                     notion: { authProvisionId: connectedAccountId },
                     filter: "page",
-                    pageSize: 1,
+                    pageSize: 2, // only need to know "exactly one" vs "more than one" shared
                 },
             })
-            const first = (search.ret as { results?: { id: string }[] } | undefined)?.results?.[0]
-            if (!first) {
+            const results = (search.ret as { results?: { id: string; url?: string }[] } | undefined)?.results ?? []
+
+            if (results.length === 0) {
                 throw new Error(
                     "No Notion pages are shared with this connection yet — open Notion → Settings → Connections, share at least one page with it, then try again."
                 )
             }
+            if (results.length > 1) {
+                throw new Error(
+                    "More than one Notion page is shared with this connection, so I can't tell which one should be the parent — please tell me which page to create it under."
+                )
+            }
 
+            const [first] = results
             await persistDefault({ parentId: first.id })
             return { parentId: first.id }
         },

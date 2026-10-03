@@ -1,3 +1,5 @@
+import { withRetries } from "@/lib/retry"
+
 // Caps how many organic results are kept — SerpAPI's raw response carries
 // far more fields (ads, related searches, pagination, etc.) than a model
 // needs to answer a question, so only a trimmed, relevant slice is returned.
@@ -42,22 +44,37 @@ export const runWebSearch = async (
     url.searchParams.set("num", String(numResults))
     url.searchParams.set("api_key", process.env.SERPAPI_API_KEY!)
 
-    const response = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
-    const data = (await response.json()) as SerpApiResponse
+    // Retries a dropped connection, a request timeout, or a 5xx from SerpAPI
+    // itself — none of those mean the query was bad, just that this one
+    // attempt didn't land. A 4xx or a 200-with-`error` body (bad api_key,
+    // unsupported query, etc.) is a real failure and isn't retried.
+    return withRetries(
+        async () => {
+            const response = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+            const data = (await response.json()) as SerpApiResponse
 
-    // SerpAPI can return a 200 with an `error` field (e.g. a bad api_key or
-    // an unsupported query) instead of a non-OK status — check both.
-    if (!response.ok || data.error) {
-        throw new Error(data.error || `SerpAPI request failed (${response.status}).`)
-    }
+            if (!response.ok || data.error) {
+                throw new Error(data.error || `SerpAPI request failed (${response.status}).`)
+            }
 
-    return {
-        query,
-        answer: data.answer_box?.answer ?? data.answer_box?.snippet ?? null,
-        results: (data.organic_results ?? []).slice(0, numResults).map((result) => ({
-            title: result.title ?? "",
-            link: result.link ?? "",
-            snippet: result.snippet ?? "",
-        })),
-    }
+            return {
+                query,
+                answer: data.answer_box?.answer ?? data.answer_box?.snippet ?? null,
+                results: (data.organic_results ?? []).slice(0, numResults).map((result) => ({
+                    title: result.title ?? "",
+                    link: result.link ?? "",
+                    snippet: result.snippet ?? "",
+                })),
+            }
+        },
+        {
+            isRetryable: (error) =>
+                // AbortSignal.timeout() firing rejects with a TimeoutError
+                // DOMException (not AbortError, despite the name) — confirmed
+                // live, this request does occasionally hit its own 15s cap.
+                (error instanceof DOMException && (error.name === "AbortError" || error.name === "TimeoutError")) ||
+                error instanceof TypeError ||
+                (error instanceof Error && /^SerpAPI request failed \(5\d\d\)\.?$/.test(error.message)),
+        }
+    )
 }

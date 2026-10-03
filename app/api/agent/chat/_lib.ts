@@ -30,8 +30,19 @@ export type ChatMessageRow = typeof chatMessages.$inferSelect
 // tool-calling loop risks a very long hanging POST. Needs to be generous
 // enough for a real multi-step task (e.g. search, then post to Slack, then
 // write to Notion) to actually finish instead of exhausting its budget on
-// research alone — 4 was too tight for that in practice.
-const MAX_ITERATIONS = 8
+// research alone — 4 was too tight for that in practice. Exported so callers
+// (Inngest, the eval harness — scripts/eval/run-eval.ts) that need to know
+// "did this turn hit the cap" don't have to hardcode a second copy.
+export const MAX_ITERATIONS = 8
+
+// The fixed message a turn ends on when it genuinely couldn't produce a real
+// reply — either the forced final iteration or the model attempting an
+// undeclared tool call (see the catch block below). Exported so callers can
+// recognize this as "the turn didn't really finish" rather than trusting any
+// non-throwing return as success — see lib/execute-agent.ts's
+// isDegradedReply and agent-reliability-report.md §5.2/§6 recommendation 1.
+export const STEPS_EXHAUSTED_MESSAGE =
+    "I wasn't able to finish that within the allowed number of steps — could you try rephrasing?"
 
 // Maps one persisted row back to the Groq message shape needed to replay
 // the conversation so far. A "tool" row with no toolCallId, or an
@@ -102,8 +113,15 @@ const persistToolDefault = async (agent: AgentConfigRow, actionName: string, val
 export const runChatTurn = async (
     agent: AgentConfigRow,
     history: ChatMessageRow[],
-    connectedTools: ConnectedTool[]
+    connectedTools: ConnectedTool[],
+    // `temperature` is optional and undefined by default (provider default,
+    // unchanged behavior for interactive chat) — lib/execute-agent.ts passes
+    // a low value for unattended scheduled runs, where nobody's around to
+    // notice a run-to-run-inconsistent answer (agent-reliability-report.md
+    // §6 recommendation 5).
+    options?: { temperature?: number }
 ): Promise<ChatMessageRow> => {
+    const temperature = options?.temperature
     const actions = getActionsForSlugs(connectedTools.map((tool) => tool.slug))
     const systemPrompt = buildAgentChatSystemPrompt({
         name: agent.name ?? "Agent",
@@ -116,6 +134,13 @@ export const runChatTurn = async (
         { role: "system", content: systemPrompt },
         ...history.map(toGroqMessage).filter((message): message is ChatCompletionMessageParam => message !== null),
     ]
+
+    // Tracks every real (non-approval-pending) call made so far *in this
+    // turn*, keyed by action name + exact arguments, so an identical repeat
+    // call (e.g. the same web_search query run twice across iterations —
+    // nothing upstream prevents this, see agent-reliability-report.md §3)
+    // reuses the earlier result instead of actually calling the tool again.
+    const dedupedCalls = new Map<string, { status: "done" | "error"; result?: unknown; error?: string }>()
 
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
         // On the last allowed iteration, force a plain reply so the loop
@@ -135,6 +160,7 @@ export const runChatTurn = async (
             response = await generateWithRetry(groq, {
                 model: GROQ_MODEL,
                 messages,
+                temperature,
                 tools: actions.length > 0 && !forceStop ? actions.map(toGroqTool) : undefined,
                 tool_choice: actions.length > 0 && !forceStop ? "auto" : undefined,
             })
@@ -159,8 +185,49 @@ export const runChatTurn = async (
             // bottom-of-function fallback uses, instead of a raw JSON dump.
             const isUnsupportedToolAttempt =
                 error instanceof Error && /tool_use_failed|which was not in request\.tools/.test(error.message)
+
+            // Recover instead of giving up outright when the model reached
+            // for a tool it couldn't have: either the forced final iteration
+            // (likely with real, useful results already sitting in
+            // `messages` — e.g. several completed web_search calls), or a
+            // request that declared *zero* tools at all (confirmed live —
+            // see agent-reliability-report.md §5.1 — the model can attempt a
+            // tool call even then). Continuing the normal loop wouldn't help
+            // in either case (no tools to retry with), so ask once more, in
+            // plain text with nothing tool-shaped in the request, instead of
+            // the generic "steps exhausted" message.
+            if (isUnsupportedToolAttempt && (forceStop || actions.length === 0)) {
+                try {
+                    const recovery = await generateWithRetry(groq, {
+                        model: GROQ_MODEL,
+                        temperature,
+                        messages: [
+                            ...messages,
+                            {
+                                role: "user",
+                                content:
+                                    "Do not attempt to call any tool — none are available right now. Answer in plain text only: if you already gathered results earlier in this conversation, summarize them; otherwise, if you don't have a reliable way to know the answer, say so plainly instead of guessing.",
+                            },
+                        ],
+                    })
+                    const recoveredContent = recovery.choices[0]?.message?.content
+                    if (recoveredContent) {
+                        const [saved] = await db.insert(chatMessages).values({
+                            agentId: agent.agentId,
+                            userEmail: agent.userEmail,
+                            role: "assistant",
+                            content: recoveredContent,
+                        }).returning()
+                        return saved
+                    }
+                } catch {
+                    // Recovery attempt failed too (e.g. still rate-limited) —
+                    // fall through to the generic fallback below.
+                }
+            }
+
             const content = forceStop || isUnsupportedToolAttempt
-                ? "I wasn't able to finish that within the allowed number of steps — could you try rephrasing?"
+                ? STEPS_EXHAUSTED_MESSAGE
                 : `Something went wrong completing this — please try again. (${error instanceof Error ? error.message : "unknown error"})`
             const [saved] = await db.insert(chatMessages).values({
                 agentId: agent.agentId,
@@ -214,20 +281,41 @@ export const runChatTurn = async (
                 continue
             }
 
+            // Same action + identical arguments already ran earlier this
+            // turn — reuse that outcome instead of calling the tool again
+            // (cheaper, and nudges the model toward using what it already
+            // has instead of spinning on the same call until MAX_ITERATIONS).
+            const dedupKey = `${action.name}:${JSON.stringify(args)}`
+            const priorCall = dedupedCalls.get(dedupKey)
+            if (priorCall) {
+                resolvedCalls.push({
+                    id: toolCall.id, name: action.name, arguments: args,
+                    label: action.toApprovalLabel(args), needsApproval: false, status: priorCall.status,
+                    result: priorCall.status === "done"
+                        ? { note: "Duplicate of an earlier identical call this turn — reusing its result instead of calling the tool again.", value: priorCall.result }
+                        : undefined,
+                    error: priorCall.status === "error" ? priorCall.error : undefined,
+                })
+                continue
+            }
+
             // Direct (non-Pipedream) action — runs immediately, no
             // connected account required (see constant/direct-auth-tools.ts).
             if (action.run) {
                 try {
                     const result = await action.run(args)
+                    dedupedCalls.set(dedupKey, { status: "done", result })
                     resolvedCalls.push({
                         id: toolCall.id, name: action.name, arguments: args,
                         label: action.toApprovalLabel(args), needsApproval: false, status: "done", result,
                     })
                 } catch (error) {
+                    const message = error instanceof Error ? error.message : "Action failed."
+                    dedupedCalls.set(dedupKey, { status: "error", error: message })
                     resolvedCalls.push({
                         id: toolCall.id, name: action.name, arguments: args,
                         label: action.toApprovalLabel(args), needsApproval: false, status: "error",
-                        error: error instanceof Error ? error.message : "Action failed.",
+                        error: message,
                     })
                 }
                 continue
@@ -258,11 +346,13 @@ export const runChatTurn = async (
                 }
 
                 const result = await runAction(action, mergedArgs, agent.userEmail ?? "", connectedTool.connectedAccountId)
+                dedupedCalls.set(dedupKey, { status: "done", result })
                 resolvedCalls.push({
                     id: toolCall.id, name: action.name, arguments: mergedArgs,
                     label: action.toApprovalLabel(mergedArgs), needsApproval: false, status: "done", result,
                 })
             } catch (error) {
+                dedupedCalls.set(dedupKey, { status: "error", error: error instanceof Error ? error.message : "Action failed." })
                 resolvedCalls.push({
                     id: toolCall.id, name: action.name, arguments: args,
                     label: action.toApprovalLabel(args), needsApproval: false, status: "error",
@@ -317,7 +407,7 @@ export const runChatTurn = async (
     // function's return type honest if that ever changes.
     const [saved] = await db.insert(chatMessages).values({
         agentId: agent.agentId, userEmail: agent.userEmail, role: "assistant",
-        content: "I wasn't able to finish that within the allowed number of steps — could you try rephrasing?",
+        content: STEPS_EXHAUSTED_MESSAGE,
     }).returning()
     return saved
 }

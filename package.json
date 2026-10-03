@@ -9,7 +9,8 @@
     "lint": "next lint",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "eval:agent": "tsx --env-file=.env scripts/eval/run-eval.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -56,6 +57,7 @@
     "eslint-config-next": "^16.2.6",
     "shadcn": "^4.19.0",
     "tailwindcss": "^4.0.0",
+    "tsx": "^4.23.13",
     "typescript": "^5.6.3"
   }
 }
